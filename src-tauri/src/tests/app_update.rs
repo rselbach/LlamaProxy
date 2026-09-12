@@ -96,7 +96,7 @@ fn portable_update_test_manifest(version: &str) -> PortableUpdateManifest {
 }
 
 #[test]
-fn portable_update_manifest_requires_both_matching_github_assets() {
+fn portable_update_manifest_validates_matching_github_assets() {
     let manifest = portable_update_test_manifest("1.2.3");
     assert!(validate_portable_update_manifest(&manifest).is_ok());
 
@@ -144,10 +144,6 @@ fn portable_update_manifest_requires_both_matching_github_assets() {
     }
 
     let (platform, _, _) = portable_update_asset_platform().unwrap();
-    let mut missing_arch = portable_update_test_manifest("1.2.3");
-    missing_arch.assets.remove(&format!("{platform}-aarch64"));
-    assert!(validate_portable_update_manifest(&missing_arch).is_err());
-
     let mut invalid_timestamp = portable_update_test_manifest("1.2.3");
     invalid_timestamp.published_at = "not-a-timestamp".to_string();
     assert!(validate_portable_update_manifest(&invalid_timestamp).is_err());
@@ -174,6 +170,85 @@ fn portable_update_manifest_requires_both_matching_github_assets() {
         .url =
         format!("{APP_RELEASE_DOWNLOAD_PREFIX}v9.9.9/LlamaProxy-v1.2.3-{display}-amd64.{suffix}");
     assert!(validate_portable_update_manifest(&mismatched_tag).is_err());
+}
+
+#[test]
+fn portable_update_manifest_accepts_single_architecture_catalogs() {
+    let (platform, _, _) = portable_update_asset_platform().unwrap();
+    for arch in ["amd64", "aarch64"] {
+        let mut manifest = portable_update_test_manifest("1.2.3");
+        manifest
+            .assets
+            .retain(|key, _| key == &format!("{platform}-{arch}"));
+        manifest.full_assets = Some(manifest.assets.clone());
+        assert!(
+            validate_portable_update_manifest(&manifest).is_ok(),
+            "single-architecture manifest rejected: {platform}-{arch}"
+        );
+    }
+}
+
+#[test]
+fn portable_update_manifest_rejects_empty_and_unknown_catalogs() {
+    let (platform, _, _) = portable_update_asset_platform().unwrap();
+    let mut empty = portable_update_test_manifest("1.2.3");
+    empty.assets.clear();
+    assert!(validate_portable_update_manifest(&empty).is_err());
+
+    let mut empty_full = portable_update_test_manifest("1.2.3");
+    empty_full.full_assets = Some(std::collections::HashMap::new());
+    assert!(validate_portable_update_manifest(&empty_full).is_err());
+
+    for key in [format!("{platform}-unknown"), "other-aarch64".to_string()] {
+        let mut manifest = portable_update_test_manifest("1.2.3");
+        let asset = portable_update_test_asset("1.2.3", "aarch64");
+        manifest.assets = [(key.clone(), asset.clone())].into_iter().collect();
+        assert!(validate_portable_update_manifest(&manifest).is_err());
+
+        let mut extra = portable_update_test_manifest("1.2.3");
+        extra.assets.insert(key, asset);
+        assert!(validate_portable_update_manifest(&extra).is_err());
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn portable_update_manifest_accepts_generated_arm64_only_macos_release() {
+    let directory = agent_test_home("arm64-only-update-manifest");
+    fs::write(
+        directory.join("LlamaProxy-v1.2.3-Darwin-aarch64.dmg"),
+        b"Greendale Apple silicon release",
+    )
+    .unwrap();
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts/manifest.mjs");
+    let output = Command::new("node")
+        .arg(script)
+        .arg("--directory")
+        .arg(&directory)
+        .args(["--platform", "darwin", "--tag", "v1.2.3"])
+        .output()
+        .unwrap();
+    let manifests = [
+        "portable-update-darwin-v2.json",
+        "portable-update-darwin.json",
+    ]
+    .map(|name| fs::read(directory.join(name)));
+    fs::remove_dir_all(directory).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for contents in manifests {
+        let manifest: PortableUpdateManifest = serde_json::from_slice(&contents.unwrap()).unwrap();
+        assert_eq!(manifest.assets.len(), 1);
+        assert!(manifest.assets.contains_key("darwin-aarch64"));
+        let result = validate_portable_update_manifest(&manifest);
+        assert!(
+            result.is_ok(),
+            "generated release manifest rejected: {result:?}"
+        );
+    }
 }
 
 #[test]

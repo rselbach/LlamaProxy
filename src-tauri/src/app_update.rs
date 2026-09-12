@@ -473,18 +473,17 @@ fn validate_portable_update_asset_catalog(
     suffix: &str,
     allow_windows_legacy: bool,
 ) -> Result<(), String> {
-    if assets.len() != 2 {
-        return Err(format!(
-            "The app update manifest must include both {display_platform} architectures"
-        ));
+    if assets.is_empty() {
+        return Err("The app update manifest has no release assets".to_string());
     }
     let version = manifest.version.trim().trim_start_matches('v');
     let tag = format!("v{version}");
-    for arch in ["amd64", "aarch64"] {
-        let key = format!("{platform}-{arch}");
-        let asset = assets
-            .get(&key)
-            .ok_or_else(|| format!("The app update manifest lacks {key}"))?;
+    let platform_prefix = format!("{platform}-");
+    for (key, asset) in assets {
+        let arch = key
+            .strip_prefix(&platform_prefix)
+            .filter(|arch| matches!(*arch, "amd64" | "aarch64"))
+            .ok_or_else(|| format!("Unsupported app update asset target: {key}"))?;
         validate_portable_update_asset(asset)?;
         let full_package_name = format!("LlamaProxy-v{version}-{display_platform}-{arch}.{suffix}");
         let full_package_url = format!("{APP_RELEASE_DOWNLOAD_PREFIX}{tag}/{full_package_name}");
