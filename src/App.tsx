@@ -18,7 +18,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import appLogo from './assets/logo.jpg';
+import appLogo from './assets/logo.png';
 import { CoreRuntimeProvider, useCoreRuntime } from './coreRuntime';
 import { CoreUpdateProvider, useCoreUpdate } from './coreUpdate';
 import { ConfigPanelPage } from './pages/ConfigPanel';

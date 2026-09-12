@@ -20,7 +20,7 @@ import {
   Sun,
   X,
 } from "lucide-react";
-import appLogo from "../assets/logo.jpg";
+import appLogo from "../assets/logo.png";
 import { useI18n, languageOptions, type AppLocale } from "../i18n";
 import type { MessageKey } from "../i18n/resources";
 import { InlineNotice, useAppNotice, type NoticeMessage } from "../appNotice";
