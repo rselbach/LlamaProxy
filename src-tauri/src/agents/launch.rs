@@ -15,6 +15,7 @@ fn terminal_option(id: &str, label: &str) -> AgentTerminalOption {
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn program_on_path(program: &str) -> Option<PathBuf> {
     let path = env::var_os("PATH")?;
     env::split_paths(&path).find_map(|directory| {
@@ -728,12 +729,13 @@ pub(crate) async fn restart_agent_app(app: tauri::AppHandle, client: String) -> 
         let target = find_desktop_restart_target(client, &home)?;
         match client {
             AgentClient::Codex => stop_codex_desktop(&target)?,
-            AgentClient::OpenCode => {
-                let DesktopAppTarget::Application(path) = &target else {
+            AgentClient::OpenCode => match &target {
+                DesktopAppTarget::Application(path) => stop_opencode_desktop(path)?,
+                #[cfg(target_os = "windows")]
+                DesktopAppTarget::WindowsAppId(_) => {
                     return Err("Invalid OpenCode desktop installation type".to_string());
-                };
-                stop_opencode_desktop(path)?;
-            }
+                }
+            },
             _ => stop_other_desktop(&target, client.name())?,
         }
         match &target {
