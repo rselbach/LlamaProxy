@@ -18,7 +18,7 @@ pub(crate) struct RestorePlan {
 fn local_restore_plan(client: &str, home: &Path, id: &str) -> Result<RestorePlan, String> {
     let _guard = AGENT_CONFIG_FILE_LOCK
         .lock()
-        .map_err(|_| "配置文件锁已损坏")?;
+        .map_err(|_| "Configuration file lock is poisoned")?;
     let paths = config_paths(client, home)?;
     let (preview, before, after) = preview(client, &paths, id)?;
     let version = read_version(client, &paths, id)?;
@@ -56,7 +56,7 @@ fn desktop_restore_models(plan: &RestorePlan) -> Result<Option<Vec<AgentModelOpt
     ];
     let mappings =
         plan.version.mappings.as_ref().ok_or(
-            "此备份版本缺少 Claude Desktop 模型映射，无法安全恢复内核路由，请重新配置模型",
+            "This backup lacks Claude Desktop model mappings. Core routes cannot be restored safely; please configure the models again",
         )?;
     Ok(Some(
         routes
@@ -126,7 +126,11 @@ pub(crate) async fn prepare_restore_plan(
 ) -> Result<RestorePlan, String> {
     let mut plan = local_restore_plan(client, home, id)?;
     if let Some(models) = desktop_restore_models(&plan)? {
-        let mappings = plan.version.mappings.as_ref().ok_or("缺少备份模型映射")?;
+        let mappings = plan
+            .version
+            .mappings
+            .as_ref()
+            .ok_or("Backup model mappings are missing")?;
         let before = fetch_management_config_yaml(config)
             .await
             .map_err(agent_core_error)?;
@@ -154,19 +158,21 @@ pub(crate) async fn execute_restore_plan(
     revision: &str,
 ) -> Result<AgentConfigActionResult, String> {
     if plan.preview.revision != revision {
-        return Err("预览后配置发生变化，请重新选择备份版本".into());
+        return Err(
+            "Configuration changed after preview; please select the backup version again".into(),
+        );
     }
     let commit = || {
         let _guard = AGENT_CONFIG_FILE_LOCK
             .lock()
-            .map_err(|_| "配置文件锁已损坏")?;
+            .map_err(|_| "Configuration file lock is poisoned")?;
         let latest = preview(&plan.version.client, &plan.paths, &plan.version.id)?.0;
         let version = read_version(&plan.version.client, &plan.paths, &plan.version.id)?;
         if latest.revision != plan.local_revision
             || serde_json::to_vec(&version).map_err(|e| e.to_string())?
                 != serde_json::to_vec(&plan.version).map_err(|e| e.to_string())?
         {
-            return Err("恢复期间配置或备份发生变化，请重新选择备份版本".into());
+            return Err("Configuration or backups changed during restoration; please select the backup version again".into());
         }
         commit_config_with_mappings(
             &plan.version.client,

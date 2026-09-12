@@ -2,6 +2,15 @@ use super::support::*;
 use super::*;
 
 #[test]
+fn core_port_defaults_to_11432_and_preserves_configured_ports() {
+    for (input, want) in [("{}", 11432), ("port: 8317\n", 8317)] {
+        let document = serde_norway::from_str(input).unwrap();
+        let settings = core_config_settings_from_value(&document).unwrap();
+        assert_eq!(settings.port, want);
+    }
+}
+
+#[test]
 fn legacy_string_api_keys_keep_custom_keys_without_special_protection() {
     let legacy = "port = 8317\nallow-lan = false\nrun-on-startup = false\nauth-dir = \"/tmp/oauth\"\napi-keys = [\"123456\", \"custom-key\"]\nmanagement-secret-key = \"123456\"\nplugins-enabled = false\nrouting-strategy = \"round-robin\"\n";
     let mut config = toml::from_str::<GuiConfigFile>(legacy).unwrap();
@@ -279,7 +288,7 @@ fn packaged_macos_auth_migration_does_not_overwrite_conflicting_credentials() {
     let error = migrate_auth_dir_from_macos_app_bundle(&mut config, &install_dir, &destination)
         .unwrap_err();
 
-    assert!(error.contains("未覆盖"), "{error}");
+    assert!(error.contains("not overwritten"), "{error}");
     assert_eq!(config.auth_dir, original_auth_dir);
     assert_eq!(
         fs::read(destination.join("account.json")).unwrap(),
@@ -496,7 +505,7 @@ fn runtime_network_patch_preserves_comments_and_other_settings() {
 #[test]
 fn runtime_network_patch_skips_unchanged_yaml() {
     let config = GuiConfigFile::default();
-    let input = "host: 127.0.0.1\nport: 8317\n";
+    let input = "host: 127.0.0.1\nport: 11432\n";
 
     assert!(patch_core_network_yaml(input, &config).unwrap().is_none());
 }
@@ -1244,7 +1253,7 @@ fn startup_merge_without_current_config_uses_gui_defaults() {
         document["host"],
         serde_norway::Value::String("127.0.0.1".to_string())
     );
-    assert_eq!(document["port"], serde_norway::to_value(8317_u16).unwrap());
+    assert_eq!(document["port"], serde_norway::to_value(11432_u16).unwrap());
     assert_eq!(document["debug"], serde_norway::Value::Bool(false));
     assert_eq!(document["api-keys"][0], DEFAULT_API_KEY, "{merged}");
     assert_eq!(document["plugins"]["enabled"], false);

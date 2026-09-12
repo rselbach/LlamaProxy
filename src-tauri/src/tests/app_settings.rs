@@ -80,7 +80,14 @@ fn gui_config_defaults_are_stable() {
     let config = GuiConfigFile::default();
     let content = toml::to_string_pretty(&config).unwrap();
 
-    assert!(content.contains("port = 8317"));
+    assert!(content.contains("port = 11432"));
+    assert_eq!(toml::from_str::<GuiConfigFile>("").unwrap().port, 11432);
+    assert_eq!(
+        toml::from_str::<GuiConfigFile>("port = 8317\n")
+            .unwrap()
+            .port,
+        8317
+    );
     assert!(content.contains("allow-lan = false"));
     assert!(content.contains("run-on-startup = false"));
     assert!(content.contains("start-core-on-launch = true"));
@@ -93,7 +100,7 @@ fn gui_config_defaults_are_stable() {
     assert!(content.contains("auth-dir = \"../oauth\""));
     assert!(content.contains("[[api-keys]]"));
     assert!(content.contains("key = \"123456\""));
-    assert!(content.contains("remark = \"默认密钥\""));
+    assert!(content.contains("remark = \"Default key\""));
     assert!(content.contains("management-secret-key = \"\""));
     assert!(content.contains("plugins-enabled = false"));
     assert!(content.contains("routing-strategy = \"round-robin\""));

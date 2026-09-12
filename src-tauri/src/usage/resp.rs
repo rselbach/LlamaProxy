@@ -23,8 +23,10 @@ impl UsageSubscription {
         let address = format!("127.0.0.1:{port}");
         let stream = timeout(CONNECT_TIMEOUT, TcpStream::connect(&address))
             .await
-            .map_err(|_| format!("连接 CPA usage 订阅超时: {address}"))?
-            .map_err(|error| format!("连接 CPA usage 订阅失败 {address}: {error}"))?;
+            .map_err(|_| format!("Timed out connecting to the CPA usage subscription: {address}"))?
+            .map_err(|error| {
+                format!("Failed to connect to the CPA usage subscription {address}: {error}")
+            })?;
         let mut subscription = Self {
             stream,
             read_buffer: Vec::new(),
@@ -32,15 +34,24 @@ impl UsageSubscription {
         subscription.send_command(&["AUTH", management_key]).await?;
         match subscription.read_frame().await? {
             RespValue::Simple(value) if value.eq_ignore_ascii_case("OK") => {}
-            RespValue::Error(error) => return Err(format!("CPA usage 订阅认证失败: {error}")),
-            value => return Err(format!("CPA usage 订阅认证响应无效: {}", value.kind())),
+            RespValue::Error(error) => {
+                return Err(format!(
+                    "CPA usage subscription authentication failed: {error}"
+                ))
+            }
+            value => {
+                return Err(format!(
+                    "Invalid CPA usage subscription authentication response: {}",
+                    value.kind()
+                ))
+            }
         }
         subscription
             .send_command(&["SUBSCRIBE", USAGE_CHANNEL])
             .await?;
         let acknowledgement = subscription.read_frame().await?;
         if !is_subscription_ack(&acknowledgement) {
-            return Err("CPA 未确认 usage 订阅".to_string());
+            return Err("CPA did not confirm the usage subscription".to_string());
         }
         Ok(subscription)
     }
@@ -52,7 +63,7 @@ impl UsageSubscription {
                 return Ok(payload);
             }
             if let RespValue::Error(error) = frame {
-                return Err(format!("CPA usage 订阅返回错误: {error}"));
+                return Err(format!("CPA usage subscription returned an error: {error}"));
             }
         }
     }
@@ -66,8 +77,8 @@ impl UsageSubscription {
         }
         timeout(IO_TIMEOUT, self.stream.write_all(&command))
             .await
-            .map_err(|_| "写入 CPA usage 订阅命令超时".to_string())?
-            .map_err(|error| format!("写入 CPA usage 订阅命令失败: {error}"))
+            .map_err(|_| "Timed out writing the CPA usage subscription command".to_string())?
+            .map_err(|error| format!("Failed to write the CPA usage subscription command: {error}"))
     }
 
     async fn read_frame(&mut self) -> Result<RespValue, String> {
@@ -80,15 +91,17 @@ impl UsageSubscription {
                 ParseResult::Incomplete => {}
             }
             if self.read_buffer.len() >= MAX_FRAME_BYTES {
-                return Err("CPA usage 订阅响应超过大小限制".to_string());
+                return Err("CPA usage subscription response exceeds the size limit".to_string());
             }
             let mut chunk = [0_u8; 8192];
             let read = timeout(IO_TIMEOUT, self.stream.read(&mut chunk))
                 .await
-                .map_err(|_| "读取 CPA usage 订阅响应超时".to_string())?
-                .map_err(|error| format!("读取 CPA usage 订阅响应失败: {error}"))?;
+                .map_err(|_| "Timed out reading the CPA usage subscription response".to_string())?
+                .map_err(|error| {
+                    format!("Failed to read the CPA usage subscription response: {error}")
+                })?;
             if read == 0 {
-                return Err("CPA usage 订阅连接已关闭".to_string());
+                return Err("CPA usage subscription connection closed".to_string());
             }
             self.read_buffer.extend_from_slice(&chunk[..read]);
         }
@@ -132,7 +145,7 @@ enum ParseResult {
 
 fn parse_resp_frame(input: &[u8], offset: usize, depth: usize) -> Result<ParseResult, String> {
     if depth > MAX_NESTING_DEPTH {
-        return Err("CPA usage 订阅响应嵌套过深".to_string());
+        return Err("CPA usage subscription response is nested too deeply".to_string());
     }
     let Some(prefix) = input.get(offset).copied() else {
         return Ok(ParseResult::Incomplete);
@@ -143,15 +156,15 @@ fn parse_resp_frame(input: &[u8], offset: usize, depth: usize) -> Result<ParseRe
                 return Ok(ParseResult::Incomplete);
             };
             let text = String::from_utf8(line.to_vec())
-                .map_err(|_| "CPA usage 订阅文本响应不是 UTF-8".to_string())?;
-            let value = match prefix {
-                b'+' => RespValue::Simple(text),
-                b'-' => RespValue::Error(text),
-                _ => RespValue::Integer(
-                    text.parse::<i64>()
-                        .map_err(|_| "CPA usage 订阅整数响应无效".to_string())?,
-                ),
-            };
+                .map_err(|_| "CPA usage subscription text response is not UTF-8".to_string())?;
+            let value =
+                match prefix {
+                    b'+' => RespValue::Simple(text),
+                    b'-' => RespValue::Error(text),
+                    _ => RespValue::Integer(text.parse::<i64>().map_err(|_| {
+                        "Invalid CPA usage subscription integer response".to_string()
+                    })?),
+                };
             Ok(ParseResult::Complete(value, next - offset))
         }
         b'$' => {
@@ -165,10 +178,10 @@ fn parse_resp_frame(input: &[u8], offset: usize, depth: usize) -> Result<ParseRe
                     data_start - offset,
                 ));
             }
-            let length =
-                usize::try_from(length).map_err(|_| "CPA usage 订阅字符串长度无效".to_string())?;
+            let length = usize::try_from(length)
+                .map_err(|_| "Invalid CPA usage subscription string length".to_string())?;
             if length > MAX_FRAME_BYTES {
-                return Err("CPA usage 订阅字符串超过大小限制".to_string());
+                return Err("CPA usage subscription string exceeds the size limit".to_string());
             }
             let data_end = data_start.saturating_add(length);
             let frame_end = data_end.saturating_add(2);
@@ -176,7 +189,7 @@ fn parse_resp_frame(input: &[u8], offset: usize, depth: usize) -> Result<ParseRe
                 return Ok(ParseResult::Incomplete);
             }
             if input.get(data_end..frame_end) != Some(b"\r\n") {
-                return Err("CPA usage 订阅字符串结尾无效".to_string());
+                return Err("Invalid CPA usage subscription string terminator".to_string());
             }
             Ok(ParseResult::Complete(
                 RespValue::Bulk(Some(input[data_start..data_end].to_vec())),
@@ -191,10 +204,10 @@ fn parse_resp_frame(input: &[u8], offset: usize, depth: usize) -> Result<ParseRe
             if length < 0 {
                 return Ok(ParseResult::Complete(RespValue::Array(None), next - offset));
             }
-            let length =
-                usize::try_from(length).map_err(|_| "CPA usage 订阅数组长度无效".to_string())?;
+            let length = usize::try_from(length)
+                .map_err(|_| "Invalid CPA usage subscription array length".to_string())?;
             if length > MAX_ARRAY_LENGTH {
-                return Err("CPA usage 订阅数组超过大小限制".to_string());
+                return Err("CPA usage subscription array exceeds the size limit".to_string());
             }
             let mut values = Vec::with_capacity(length);
             for _ in 0..length {
@@ -211,7 +224,7 @@ fn parse_resp_frame(input: &[u8], offset: usize, depth: usize) -> Result<ParseRe
                 next - offset,
             ))
         }
-        _ => Err("CPA usage 订阅响应类型无效".to_string()),
+        _ => Err("Invalid CPA usage subscription response type".to_string()),
     }
 }
 
@@ -226,9 +239,9 @@ fn resp_line(input: &[u8], start: usize) -> Option<(&[u8], usize)> {
 
 fn parse_resp_length(value: &[u8]) -> Result<i64, String> {
     std::str::from_utf8(value)
-        .map_err(|_| "CPA usage 订阅长度不是 UTF-8".to_string())?
+        .map_err(|_| "CPA usage subscription length is not UTF-8".to_string())?
         .parse::<i64>()
-        .map_err(|_| "CPA usage 订阅长度无效".to_string())
+        .map_err(|_| "Invalid CPA usage subscription length".to_string())
 }
 
 fn is_subscription_ack(value: &RespValue) -> bool {
@@ -281,7 +294,7 @@ mod tests {
             Err(error) => error,
             _ => panic!("expected oversized RESP array to fail"),
         };
-        assert!(error.contains("数组超过大小限制"));
+        assert!(error.contains("array exceeds the size limit"));
     }
 
     #[tokio::test]

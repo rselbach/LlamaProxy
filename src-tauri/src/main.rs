@@ -134,7 +134,7 @@ const OAUTH_DIR_NAME: &str = "oauth";
 const DEFAULT_AUTH_DIR: &str = "../oauth";
 const DEFAULT_API_KEY: &str = "123456";
 const DEFAULT_AGENT_TERMINAL: &str = "auto";
-const DEFAULT_API_KEY_INITIAL_REMARK: &str = "默认密钥";
+const DEFAULT_API_KEY_INITIAL_REMARK: &str = "Default key";
 const DEFAULT_REQUEST_RETRY: u32 = 3;
 const DEFAULT_MAX_RETRY_CREDENTIALS: u32 = 0;
 const DEFAULT_MAX_RETRY_INTERVAL: u32 = 30;
@@ -387,7 +387,7 @@ impl AgentConfigStatusCache {
                     .filter(|entry| entry.port == port && entry.api_key_sha256 == api_key_sha256)
                     .map(|entry| entry.statuses.clone())
             })
-            .map_err(|_| "智能体配置状态缓存锁已损坏".to_string())
+            .map_err(|_| "Agent configuration state cache lock is poisoned".to_string())
     }
 
     fn replace(
@@ -399,7 +399,7 @@ impl AgentConfigStatusCache {
         let mut current = self
             .entry
             .lock()
-            .map_err(|_| "智能体配置状态缓存锁已损坏".to_string())?;
+            .map_err(|_| "Agent configuration state cache lock is poisoned".to_string())?;
         *current = Some(AgentConfigStatusCacheEntry {
             port,
             api_key_sha256: sha256_bytes(api_key.as_bytes()),
@@ -412,7 +412,7 @@ impl AgentConfigStatusCache {
         let mut current = self
             .entry
             .lock()
-            .map_err(|_| "智能体配置状态缓存锁已损坏".to_string())?;
+            .map_err(|_| "Agent configuration state cache lock is poisoned".to_string())?;
         *current = None;
         Ok(())
     }
@@ -692,7 +692,7 @@ impl VersionDownloadSource {
             Self::Gitcode => "GitCode",
             Self::GhProxy => "gh-proxy.com",
             Self::GhFast => "ghfast.top",
-            Self::Custom => "自定义镜像",
+            Self::Custom => "Custom mirror",
         }
     }
 
@@ -787,8 +787,8 @@ fn version_download_source_candidates(
 }
 
 fn normalize_custom_download_mirror_url(value: &str) -> Result<String, String> {
-    let mut url =
-        reqwest::Url::parse(value.trim()).map_err(|error| format!("镜像地址无效: {error}"))?;
+    let mut url = reqwest::Url::parse(value.trim())
+        .map_err(|error| format!("Invalid mirror URL: {error}"))?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || url.port().is_some()
@@ -797,7 +797,7 @@ fn normalize_custom_download_mirror_url(value: &str) -> Result<String, String> {
         || url.query().is_some()
         || url.fragment().is_some()
     {
-        return Err("镜像地址必须是无认证、端口、查询参数和片段的 HTTPS 地址".to_string());
+        return Err("The mirror URL must use HTTPS without authentication, a port, query parameters, or a fragment".to_string());
     }
     if !url.path().ends_with('/') {
         let path = format!("{}/", url.path());
@@ -905,7 +905,7 @@ impl Default for GuiConfigFile {
     fn default() -> Self {
         Self {
             locale: "zh-CN".to_string(),
-            port: 8317,
+            port: 11432,
             allow_lan: false,
             host: "127.0.0.1".to_string(),
             run_on_startup: false,
@@ -1323,7 +1323,7 @@ impl AgentClient {
             "zcode" => Ok(Self::ZCode),
             "kimi-code" => Ok(Self::KimiCode),
             "grok-build" => Ok(Self::GrokBuild),
-            _ => Err(format!("不支持的智能体客户端: {value}")),
+            _ => Err(format!("Unsupported agent client: {value}")),
         }
     }
 
@@ -1572,15 +1572,25 @@ struct DownloadedArchive {
     sha256: String,
 }
 
+// Phase identifiers are consumed by the frontend; only diagnostic prose is English.
+fn core_install_error_phase(error: &str) -> &'static str {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("cancelled") || lower.contains("canceled") || error.contains("取消") {
+        "已取消"
+    } else {
+        "安装失败"
+    }
+}
+
 impl CoreDownloadState {
     fn start(&self, token: CancellationToken, version: Option<String>) -> Result<(), String> {
         let mut inner = self
             .inner
             .lock()
-            .map_err(|_| "内核安装状态锁已损坏".to_string())?;
+            .map_err(|_| "Core installation state lock is poisoned".to_string())?;
 
         if inner.running {
-            return Err("已有内核安装任务正在运行".to_string());
+            return Err("A core installation task is already running".to_string());
         }
 
         inner.running = true;
@@ -1662,15 +1672,11 @@ impl CoreDownloadState {
                     inner.task.downloaded = 1;
                     inner.task.total = Some(1);
                     inner.task.percent = Some(100.0);
-                    inner.task.message = Some(format!("{} 安装完成", result.version));
+                    inner.task.message = Some(format!("{} installation completed", result.version));
                     inner.task.result = Some(result);
                 }
                 Err(error) => {
-                    inner.task.phase = if error.contains("取消") {
-                        "已取消".to_string()
-                    } else {
-                        "安装失败".to_string()
-                    };
+                    inner.task.phase = core_install_error_phase(&error).to_string();
                     inner.task.message = Some(error);
                     inner.task.result = None;
                 }
@@ -1704,14 +1710,13 @@ impl AppUpdateState {
         let mut inner = self
             .inner
             .lock()
-            .map_err(|_| "应用更新状态锁已损坏".to_string())?;
+            .map_err(|_| "App update state lock is poisoned".to_string())?;
         if inner.task.running {
-            return Err("已有应用更新任务正在运行".to_string());
+            return Err("An app update task is already running".to_string());
         }
-        let pending = inner
-            .pending
-            .clone()
-            .ok_or_else(|| "没有可安装的应用更新，请先检查更新".to_string())?;
+        let pending = inner.pending.clone().ok_or_else(|| {
+            "No app update is available to install; check for updates first".to_string()
+        })?;
         inner.token = Some(token);
         inner.task = AppUpdateTask {
             running: true,
@@ -1776,7 +1781,7 @@ impl CoreProcessState {
 
     fn ensure_active(&self) -> Result<(), String> {
         if self.is_shutting_down() {
-            Err("应用正在退出，已取消内核操作".to_string())
+            Err("The app is exiting; core operation cancelled".to_string())
         } else {
             Ok(())
         }
@@ -1822,7 +1827,7 @@ impl CoreProcessState {
         let mut adopted = self
             .adopted_processes
             .lock()
-            .map_err(|_| "接管的内核进程状态锁已损坏".to_string())?;
+            .map_err(|_| "Adopted core process state lock is poisoned".to_string())?;
         *adopted = process_ids
             .into_iter()
             .filter(|process_id| is_process_alive(*process_id))
@@ -1840,7 +1845,7 @@ impl CoreProcessState {
         self.adopted_processes
             .lock()
             .map(|mut processes| processes.clear())
-            .map_err(|_| "接管的内核进程状态锁已损坏".to_string())
+            .map_err(|_| "Adopted core process state lock is poisoned".to_string())
     }
 
     fn take_adopted_processes(&self) -> Vec<AdoptedCoreProcess> {
@@ -1857,7 +1862,7 @@ impl CoreProcessState {
         let mut managed_child = self
             .child
             .lock()
-            .map_err(|_| "内核进程状态锁已损坏".to_string())?;
+            .map_err(|_| "Core process state lock is poisoned".to_string())?;
         *managed_child = Some(child);
         Ok(pid)
     }
@@ -1874,14 +1879,14 @@ impl MainWindowSizeState {
         self.inner
             .lock()
             .map(|size| *size)
-            .map_err(|_| "主窗口尺寸状态锁已损坏".to_string())
+            .map_err(|_| "Main window size state lock is poisoned".to_string())
     }
 
     fn replace(&self, size: SavedWindowSize) -> Result<(), String> {
         let mut current = self
             .inner
             .lock()
-            .map_err(|_| "主窗口尺寸状态锁已损坏".to_string())?;
+            .map_err(|_| "Main window size state lock is poisoned".to_string())?;
         *current = Some(size);
         Ok(())
     }
@@ -1898,14 +1903,14 @@ impl GuiConfigState {
         self.inner
             .lock()
             .map(|config| config.clone())
-            .map_err(|_| "GUI 配置状态锁已损坏".to_string())
+            .map_err(|_| "GUI configuration state lock is poisoned".to_string())
     }
 
     fn replace_external(&self, config: GuiConfigFile) -> Result<(), String> {
         let mut current = self
             .inner
             .lock()
-            .map_err(|_| "GUI 配置状态锁已损坏".to_string())?;
+            .map_err(|_| "GUI configuration state lock is poisoned".to_string())?;
         *current = config;
         Ok(())
     }
@@ -1917,7 +1922,7 @@ impl GuiConfigState {
         let mut current = self
             .inner
             .lock()
-            .map_err(|_| "GUI 配置状态锁已损坏".to_string())?;
+            .map_err(|_| "GUI configuration state lock is poisoned".to_string())?;
         let mut config = current.clone();
         apply_core_settings_to_gui_config(&mut config, settings);
         sanitize_gui_config(&mut config)?;
@@ -2035,7 +2040,7 @@ impl GuiConfigState {
         self.update(|config| {
             if let Some(url) = &candidate.custom_url {
                 if !config.custom_download_mirrors.contains(url) {
-                    return Err("自定义镜像不存在".to_string());
+                    return Err("Custom mirror does not exist".to_string());
                 }
                 config.active_custom_download_mirror = url.clone();
             }
@@ -2053,7 +2058,7 @@ impl GuiConfigState {
         let mut current = self
             .inner
             .lock()
-            .map_err(|_| "GUI 配置状态锁已损坏".to_string())?;
+            .map_err(|_| "GUI configuration state lock is poisoned".to_string())?;
         if current.selected_download_candidate() != *expected_source
             || expected_source == fallback_source
         {
@@ -2144,7 +2149,7 @@ impl GuiConfigState {
         let mut current = self
             .inner
             .lock()
-            .map_err(|_| "GUI 配置状态锁已损坏".to_string())?;
+            .map_err(|_| "GUI configuration state lock is poisoned".to_string())?;
         let mut config = current.clone();
         update(&mut config)?;
         sanitize_gui_config(&mut config)?;
@@ -2259,7 +2264,7 @@ fn main() {
                 let result = args
                     .next()
                     .map(PathBuf::from)
-                    .ok_or_else(|| "应用更新助手缺少描述文件".to_string())
+                    .ok_or_else(|| "The app update helper lacks a descriptor file".to_string())
                     .and_then(|path| run_portable_update_helper(&path));
                 if let Err(error) = result {
                     eprintln!("{error}");
@@ -2284,11 +2289,11 @@ fn main() {
             eprintln!("{error}");
             let mut config = GuiConfigFile::default();
             if let Err(secret_error) = ensure_strong_management_secret(&mut config) {
-                eprintln!("初始化 WebUI 安全密钥失败: {secret_error}");
+                eprintln!("Failed to initialize a secure WebUI key: {secret_error}");
                 return;
             }
             if let Err(sanitize_error) = sanitize_gui_config(&mut config) {
-                eprintln!("初始化固定凭证目录失败: {sanitize_error}");
+                eprintln!("Failed to initialize the fixed credential directory: {sanitize_error}");
             }
             config
         }
@@ -2338,7 +2343,7 @@ fn main() {
         if let Some(observed_size) = observed_size {
             let window_size_state = window.state::<MainWindowSizeState>();
             if let Err(error) = window_size_state.replace(observed_size) {
-                eprintln!("记录主窗口尺寸失败: {error}");
+                eprintln!("Failed to record main window size: {error}");
             }
         }
     });
@@ -2350,7 +2355,7 @@ fn main() {
                 api.prevent_close();
                 set_macos_dock_visible(window.app_handle(), false);
                 if let Err(error) = window.hide() {
-                    eprintln!("隐藏主窗口失败: {error}");
+                    eprintln!("Failed to hide the main window: {error}");
                     set_macos_dock_visible(window.app_handle(), true);
                 }
             }
@@ -2363,7 +2368,7 @@ fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 if let Err(error) = window.emit(WINDOWS_CLOSE_REQUEST_EVENT, ()) {
-                    eprintln!("显示 Windows 关闭确认失败: {error}");
+                    eprintln!("Failed to show the Windows close confirmation: {error}");
                 }
             }
         }
@@ -2372,18 +2377,18 @@ fn main() {
     let app = app
         .setup(move |app| {
             if let Err(error) = codex_catalog::validate_embedded_catalog() {
-                eprintln!("Codex 内置模型目录无效: {error}");
+                eprintln!("Invalid bundled Codex model catalog: {error}");
             }
             if let Err(error) = load_codex_model_catalog_override(app.handle()) {
-                eprintln!("加载 Codex 模型目录更新文件失败，将使用内置目录: {error}");
+                eprintln!("Failed to load the Codex model catalog update file; using the bundled catalog: {error}");
             }
             let catalog_update_app = app.handle().clone();
             if let Err(error) = load_codex_model_customizations(app.handle()) {
-                eprintln!("加载 Codex 自定义模型配置失败: {error}");
+                eprintln!("Failed to load Codex custom model configuration: {error}");
             }
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = update_codex_model_catalog_inner(&catalog_update_app).await {
-                    eprintln!("后台更新 Codex 模型目录失败，继续使用当前目录: {error}");
+                    eprintln!("Background Codex model catalog update failed; continuing with the current catalog: {error}");
                 }
             });
             if let Err(error) = restore_main_window_size(app.handle()) {
@@ -2396,13 +2401,13 @@ fn main() {
             setup_windows_tray(app)?;
 
             if let Err(error) = configure_initial_main_window(app.handle(), start_hidden) {
-                eprintln!("配置启动窗口状态失败: {error}");
+                eprintln!("Failed to configure startup window state: {error}");
             }
 
             if let Err(error) =
                 configuration_watcher::start_configuration_file_watcher(app.handle().clone())
             {
-                eprintln!("启动配置文件监控失败: {error}");
+                eprintln!("Failed to start configuration file watching: {error}");
             }
 
             start_codex_model_catalog_sync(app.handle().clone());
@@ -2410,7 +2415,7 @@ fn main() {
             let usage_app = app.handle().clone();
             tauri::async_runtime::spawn_blocking(move || {
                 if let Err(error) = usage::initialize_usage_storage() {
-                    eprintln!("初始化使用记录目录失败: {error}");
+                    eprintln!("Failed to initialize the usage history directory: {error}");
                 }
                 usage::start_usage_collector(usage_app);
             });
@@ -2424,7 +2429,7 @@ fn main() {
                     gui_config_state.inner(),
                     cache.inner(),
                 ) {
-                    eprintln!("后台刷新智能体配置状态失败: {error}");
+                    eprintln!("Background agent configuration state refresh failed: {error}");
                 }
             });
 
@@ -2453,22 +2458,22 @@ fn main() {
                 }
 
                 match auto_install_bundled_core_if_missing(&core_app) {
-                    Ok(true) => eprintln!("未检测到 CPA 内核，已自动安装内置离线版本"),
+                    Ok(true) => eprintln!("No CPA core detected; automatically installed the bundled offline version"),
                     Ok(false) => {}
-                    Err(error) => eprintln!("自动安装 CPA 离线内核失败: {error}"),
+                    Err(error) => eprintln!("Failed to automatically install the CPA offline core: {error}"),
                 }
 
                 let adopted_process_ids = match adopt_existing_core_processes(process_state.inner())
                 {
                     Ok(process_ids) => process_ids,
                     Err(error) => {
-                        eprintln!("扫描并接管当前目录的 CPA 内核失败: {error}");
+                        eprintln!("Failed to scan for and adopt the CPA core in the current directory: {error}");
                         Vec::new()
                     }
                 };
                 if !adopted_process_ids.is_empty() {
                     eprintln!(
-                        "已接管当前目录中运行的 CPA 内核: PID {}",
+                        "Adopted the CPA core running in the current directory: PID {}",
                         adopted_process_ids
                             .iter()
                             .map(u32::to_string)
@@ -2477,7 +2482,7 @@ fn main() {
                     );
                 } else if should_start_core_on_launch(&config) {
                     if let Err(error) = start_core_process_inner(process_state.inner(), &config) {
-                        eprintln!("自动启动 CPA 内核失败: {error}");
+                        eprintln!("Failed to automatically start the CPA core: {error}");
                     }
                 }
 
@@ -2492,7 +2497,7 @@ fn main() {
 
             if let Some(ack_path) = portable_update_ack.as_ref() {
                 fs::write(ack_path, env!("CARGO_PKG_VERSION").as_bytes())
-                    .map_err(|error| format!("写入应用更新启动确认失败: {error}"))?;
+                    .map_err(|error| format!("Failed to write the app update startup acknowledgment: {error}"))?;
             }
 
             Ok(())
@@ -2635,7 +2640,7 @@ fn main() {
                 return;
             }
             if let Err(error) = persist_main_window_size(app_handle) {
-                eprintln!("保存主窗口尺寸失败: {error}");
+                eprintln!("Failed to save main window size: {error}");
             }
             app_handle.state::<CoreDownloadState>().cancel();
             let app_handle = app_handle.clone();
@@ -2658,7 +2663,7 @@ fn main() {
             usage::stop_usage_collector(app_handle);
             let deepseek_process_state = app_handle.state::<DeepSeekHarnessProcessState>();
             if let Err(error) = stop_managed_deepseek_harness(deepseek_process_state.inner()) {
-                eprintln!("关闭 DeepSeek Harness 失败: {error}");
+                eprintln!("Failed to close DeepSeek Harness: {error}");
             }
             let gui_config_state = app_handle.state::<GuiConfigState>();
             let process_state = app_handle.state::<CoreProcessState>();

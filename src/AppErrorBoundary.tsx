@@ -12,7 +12,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('LlamaProxy 渲染异常', error, info.componentStack);
+    console.error('LlamaProxy render error', error, info.componentStack);
   }
 
   render() {

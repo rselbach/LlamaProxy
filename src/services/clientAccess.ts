@@ -8,7 +8,7 @@ export type ClientApiProfile = {
 };
 
 const safeLocalPort = (port: number) =>
-  Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 8317;
+  Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 11432;
 
 const normalizedConnectHost = (listenHost: string) => {
   const host = listenHost.trim().replace(/^\[|\]$/g, '');

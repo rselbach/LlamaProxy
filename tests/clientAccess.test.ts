@@ -11,10 +11,10 @@ describe('客户端 API 接入信息', () => {
     expect(profiles[2].baseUrl).toBe('http://127.0.0.1:9527');
   });
 
-  it('端口无效时回退到 8317，缺少局域网地址时保持为空', () => {
+  it('端口无效时回退到 11432，缺少局域网地址时保持为空', () => {
     const [openai] = clientApiProfiles(0);
 
-    expect(openai.baseUrl).toBe('http://127.0.0.1:8317/v1');
+    expect(openai.baseUrl).toBe('http://127.0.0.1:11432/v1');
   });
 
   it('TLS 开启时生成 HTTPS 客户端地址', () => {
@@ -29,7 +29,7 @@ describe('客户端 API 接入信息', () => {
       'http://127.0.0.1:9527/management.html#/login',
     );
     expect(webUiManagementUrl(0)).toBe(
-      'http://127.0.0.1:8317/management.html#/login',
+      'http://127.0.0.1:11432/management.html#/login',
     );
     expect(webUiManagementUrl(9527, true)).toBe(
       'https://127.0.0.1:9527/management.html#/login',

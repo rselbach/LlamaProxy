@@ -422,7 +422,7 @@ fn partial_writes_and_failed_verification_roll_back_without_persistent_snapshots
             },
         )
         .unwrap_err();
-        assert!(error.contains("已回滚"));
+        assert!(error.contains("rolled back"));
         assert!(!error.contains("secret-token"));
         assert_eq!(before, config_images(&paths).unwrap());
     }
@@ -437,14 +437,14 @@ fn partial_writes_and_failed_verification_roll_back_without_persistent_snapshots
         &mut |_, _| Err("secret-token".into()),
     )
     .unwrap_err();
-    assert!(error.contains("回滚失败"));
+    assert!(error.contains("rollback failed"));
     assert!(!error.contains("secret-token"));
     assert!(list_backups("codex", &home.0).unwrap().versions.is_empty());
     save(&paths[0], "external = true");
     assert!(
         commit_config("codex", &paths, &before, &after, "update", None)
             .unwrap_err()
-            .contains("其他程序")
+            .contains("another program")
     );
     assert_eq!(fs::read_to_string(&paths[0]).unwrap(), "external = true");
 }

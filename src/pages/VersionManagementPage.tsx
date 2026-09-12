@@ -120,11 +120,11 @@ export function VersionManagementPage() {
   const manualInstallInProgressRef = useRef(false);
   const pageVisitRef = useRef({});
 
-  const showInstallCompletedNotice = (result: CoreInstallResult, message?: string | null) => {
+  const showInstallCompletedNotice = (result: CoreInstallResult) => {
     const key = `${result.version}\u0000${result.assetName}\u0000${result.binaryPath ?? ''}`;
     if (completedInstallKeyRef.current === key) return;
     completedInstallKeyRef.current = key;
-    showNotice(message || t('kernel.install.completed', { version: result.version }), 'success');
+    showNotice({ key: 'kernel.install.completed', variables: { version: result.version } }, 'success');
   };
 
   const applyInstallTask = (
@@ -154,7 +154,7 @@ export function VersionManagementPage() {
 
     if (task.result) {
       if (showCompletionNotice) {
-        showInstallCompletedNotice(task.result, task.message);
+        showInstallCompletedNotice(task.result);
       }
       setInstallDialogOpen(false);
       setProgress(null);
@@ -164,7 +164,7 @@ export function VersionManagementPage() {
     }
 
     if (task.message && !task.running) {
-      showNotice(task.message, task.phase === '安装失败' ? 'error' : 'info');
+      showNotice(localizeInstallMessage(task, t), task.phase === '安装失败' ? 'error' : 'info');
     }
   };
 
@@ -266,7 +266,7 @@ export function VersionManagementPage() {
 
     try {
       const result = await invoke<CoreInstallResult>('install_core_version', { version });
-      showInstallCompletedNotice(result, t('kernel.install.completed', { version: result.version }));
+      showInstallCompletedNotice(result);
       manualInstallInProgressRef.current = false;
       setProgress({
         running: false,
@@ -285,11 +285,11 @@ export function VersionManagementPage() {
     } catch (error) {
       manualInstallInProgressRef.current = false;
       const errorMessage = String(error);
-      showNotice(errorMessage, errorMessage.includes('取消') ? 'info' : 'error');
+      showNotice(localizeInstallMessage({ message: errorMessage, result: null }, t), isCoreInstallCancellation(errorMessage) ? 'info' : 'error');
       setProgress((current) => ({
         running: false,
         cancellable: false,
-        phase: errorMessage.includes('取消') ? '已取消' : '安装失败',
+        phase: isCoreInstallCancellation(errorMessage) ? '已取消' : '安装失败',
         downloaded: current?.downloaded ?? 0,
         total: current?.total ?? null,
         percent: current?.percent ?? null,
@@ -518,7 +518,7 @@ export function VersionManagementPage() {
 
   const installDialogMessage = cancellingInstall
     ? t('kernel.install.waitingStop')
-    : progress?.message || (installing ? t('kernel.install.taskRunning') : '');
+    : (progress && localizeInstallMessage(progress, t)) || (installing ? t('kernel.install.taskRunning') : '');
 
   const installDialogAction = installing || progress?.running
     ? cancellingInstall
@@ -916,11 +916,16 @@ export function VersionManagementPage() {
   );
 }
 
-function localizeInstallPhase(
+export function localizeInstallPhase(
   phase: string,
   t: ReturnType<typeof useI18n>['t'],
 ) {
   const keys = {
+    '空闲': 'appUpdate.phase.idle',
+    '检查版本': 'appUpdate.phase.checking',
+    '校验内置内核': 'appUpdate.phase.verifying',
+    '解压内置内核': 'kernel.phase.extracting',
+    '准备安装最新版': 'kernel.install.inProgress',
     '准备下载': 'kernel.phase.preparingDownload',
     '下载中': 'kernel.phase.downloading',
     '解压中': 'kernel.phase.extracting',
@@ -930,7 +935,34 @@ function localizeInstallPhase(
     '已取消': 'kernel.phase.cancelled',
   } as const;
   const key = keys[phase as keyof typeof keys];
-  return key ? t(key) : phase;
+  if (key) return t(key);
+  const preparing = /^准备安装 (.+)$/.exec(phase);
+  if (preparing) return t('kernel.install.installingVersion', { version: preparing[1] });
+  const switching = /^下载失败，正在切换到 (.+)$/.exec(phase);
+  if (switching) {
+    const source = switching[1] === 'Custom mirror'
+      ? t('kernel.versions.source.custom')
+      : switching[1];
+    return t('kernel.versions.sourceAutoSwitched', { source });
+  }
+  return phase;
+}
+
+// Native phase identifiers are a protocol; localize presentation without renaming them.
+export function isCoreInstallCancellation(message: string) {
+  return /\bcancell?ed\b|取消/i.test(message);
+}
+
+export function localizeInstallMessage(
+  task: Pick<CoreInstallTask, 'message' | 'result'>,
+  t: ReturnType<typeof useI18n>['t'],
+) {
+  if (task.result) return t('kernel.install.completed', { version: task.result.version });
+  if (/^(?:Download cancelled|Download canceled|已取消下载)$/i.test(task.message ?? '')) {
+    return t('kernel.phase.cancelled');
+  }
+  // Keep operational details (including failed rollback/restart) and upstream data intact.
+  return task.message ?? '';
 }
 
 function clampPercent(percent: number) {

@@ -200,7 +200,9 @@ async fn alias_save_recovers_failures_before_and_after_writes() {
         let core = MockCore::new(CURRENT, failure);
         let updated = CURRENT.replace("my-alias", "renamed");
         let result = put_management_alias_config_changes(&core.config, CURRENT, &updated).await;
-        assert!(result.unwrap_err().contains("已恢复原配置"));
+        assert!(result
+            .unwrap_err()
+            .contains("restored the original configuration"));
         let (persisted, requests) = core.finish();
         assert_eq!(persisted, yaml_json(CURRENT), "{requests:?}");
         assert_eq!(
@@ -223,8 +225,8 @@ async fn alias_save_reports_failed_rollback_without_claiming_restoration() {
     )
     .await;
     let error = result.unwrap_err();
-    assert!(error.contains("自动恢复失败"));
-    assert!(error.contains("配置可能已部分写入"));
+    assert!(error.contains("automatic restoration failed"));
+    assert!(error.contains("configuration may be partially written"));
     let (persisted, _) = core.finish();
     assert_eq!(
         persisted["oauth-model-alias"]["codex"][0]["alias"],
@@ -242,7 +244,9 @@ async fn alias_save_does_not_rollback_over_external_changes() {
         &CURRENT.replace("my-alias", "renamed"),
     )
     .await;
-    assert!(result.unwrap_err().contains("检测到其他配置修改"));
+    assert!(result
+        .unwrap_err()
+        .contains("Other configuration changes detected"));
     let (persisted, requests) = core.finish();
     assert_eq!(persisted["debug"], true);
     assert_eq!(
@@ -263,7 +267,7 @@ async fn alias_save_rejects_stale_snapshot_before_any_write() {
         &CURRENT.replace("my-alias", "renamed"),
     )
     .await;
-    assert!(result.unwrap_err().contains("配置已变化"));
+    assert!(result.unwrap_err().contains("Configuration changed"));
     let (_, requests) = core.finish();
     assert_eq!(requests, ["GET /v0/management/config.yaml"]);
 }
@@ -317,7 +321,7 @@ async fn alias_save_can_retry_after_restoration_reformats_yaml() {
         put_management_alias_config_changes(&core.config, CURRENT, &updated)
             .await
             .unwrap_err()
-            .contains("已恢复原配置")
+            .contains("restored the original configuration")
     );
     let restored = fetch_management_config_yaml(&core.config).await.unwrap();
     validate_model_alias_revision(&restored, Some(&context.revision)).unwrap();
@@ -424,7 +428,7 @@ async fn desktop_backup_restore_rejects_core_changes_since_preview() {
         execute_restore_plan(&core.config, plan, &preview.preview.revision)
             .await
             .unwrap_err()
-            .contains("预览后")
+            .contains("after preview")
     );
     assert_eq!(
         current_desktop_mappings(&fixture.home)
@@ -449,7 +453,7 @@ async fn desktop_backup_restore_rolls_back_core_when_local_files_change() {
     assert!(execute_restore_plan(&core.config, plan, &revision)
         .await
         .unwrap_err()
-        .contains("已恢复原配置"));
+        .contains("restored the original configuration"));
     assert_eq!(config_images(&paths).unwrap(), before);
     assert_eq!(
         current_desktop_mappings(&fixture.home)

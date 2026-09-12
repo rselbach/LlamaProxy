@@ -1,166 +1,211 @@
-<p align="center">
-  <strong>English</strong> |
-  <a href="README.zh-CN.md">简体中文</a> |
-  <a href="README.ja.md">日本語</a>
-</p>
+# LlamaProxy
 
-<p align="center">
-  <img src="src/assets/logo.jpg" width="112" alt="LlamaProxy Logo">
-</p>
+LlamaProxy is a desktop app that connects coding agents and API clients to AI
+providers through a local proxy. Sign in to a provider or add an API key, choose
+a model, and configure your client from one window.
 
-<h1 align="center">LlamaProxy</h1>
+The app manages [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), the
+separate process that handles API requests. LlamaProxy does not run models
+itself. Requests go to the providers you configure, using your accounts and their
+quotas or billing.
 
-<p align="center">
-  A portable desktop console for CLIProxyAPI.<br>
-  Our goal is to make tokens free—as in freedom.
-</p>
+```text
+Coding agent or API client → CLIProxyAPI on your machine → Model provider
+                                      ↑
+                            Managed by LlamaProxy
+```
 
-## Overview
+LlamaProxy is a fork of
+[EasyCLIProxyAPI](https://github.com/router-for-me/EasyCLIProxyAPI).
 
-LlamaProxy is a fork of [EasyCLIProxyAPI](https://github.com/router-for-me/EasyCLIProxyAPI),
-a graphical desktop management tool built on [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI). It brings core lifecycle management,
-OAuth authorization, API provider aggregation, protocol conversion, credential management,
-quota inspection, usage records, model aliases, and agent client configuration into one interface.
+## Install
 
-The application is built with Tauri, React, and Rust. It can carry a matching CLIProxyAPI core
-archive, making first-time setup and offline installation easier.
+Download a package from [GitHub Releases](https://github.com/rselbach/LlamaProxy/releases/latest)
+for your operating system and processor. Release names use `amd64` for x86-64
+and `aarch64` for ARM64, including Apple silicon.
 
-## Sponsor
+- On macOS, open the `.dmg` and drag **LlamaProxy** into **Applications**.
+- On Windows, extract the entire `.zip` into a writable folder and run
+  `LlamaProxy.exe`.
+- On Linux, extract the entire `.tar.gz` into a writable folder and run
+  `./LlamaProxy` from that folder. The app requires WebKitGTK 4.1 and GTK 3 runtime
+  libraries.
 
-[![https://go.apimart.ai/gh-easycliproxyapi](./assets/apimart-en.png)](https://go.apimart.ai/gh-easycliproxyapi)
+Keep the Windows and Linux package contents together. The executable uses the
+adjacent `cpa-core` directory and `core-version.txt` to install the bundled core.
+A separate CLIProxyAPI installation is not required.
 
-Thanks to APIMart for sponsoring this project!
+## Connect your first client
 
-APIMart is a low-cost API platform for AI image & video generation — GPT-Image-2 from $0.006/image, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee — [sign up here](https://go.apimart.ai/gh-easycliproxyapi) to get started.
+Install the client itself before this setup. LlamaProxy detects and configures
+clients such as Claude Code, Claude Desktop, Codex, OpenCode, OpenClaw, Hermes
+Agent, DeepSeek Harness, ZCode, Kimi Code, Grok Build, and Pi.
 
-## Feature Tour
+1. Open LlamaProxy. On first launch, the app installs the bundled core and starts
+   it by default. Check the core status on **Home** before continuing.
+2. In **Advanced Settings**, replace the default `123456` key under
+   **Authentication Keys** with a strong key. This is the key your clients use
+   to reach the proxy, not a provider API key.
+3. Open **Beginner Mode** and connect a provider. Use **OAuth Sign-In** for an
+   account login, or **API Access** for a provider URL and API key. For API
+   access, fetch the models, select at least one, and save the connection.
+4. Select an installed client and a model. Before changing an existing client
+   configuration, use **Manual Backup** in **Agent Configuration** to save the
+   files on disk. Configuration operations can replace custom settings and do
+   not create automatic backups.
+5. Apply the configuration and wait for success before launching the client.
+   For Pi, use **Install Provider** instead of **Apply Config**.
 
-### Home dashboard and local API endpoints
+Keep LlamaProxy running while clients use its managed core. Stopping the core or
+quitting the app interrupts access through the proxy.
 
-![Home dashboard and local API endpoints](docs/screenshots/en/1.png)
+### Connect another API client
 
-The Home page provides a quick overview of the local proxy runtime and ready-to-use API endpoints:
+On **Home**, copy the URL for your client's API format and use a key from
+**Authentication Keys**. With the default network settings, the base URLs are:
 
-- Start, stop, restart, and refresh the CLIProxyAPI core.
-- View installation state, runtime state, process ID, and listening port.
-- Copy ready-to-use OpenAI, Claude, and Gemini-compatible API endpoints.
-- Check local connectivity and the application/core version at a glance.
+| Client API format | Base URL |
+| --- | --- |
+| OpenAI-compatible | `http://127.0.0.1:11432/v1` |
+| Anthropic-compatible | `http://127.0.0.1:11432` |
+| Gemini-compatible | `http://127.0.0.1:11432` |
 
-Core installation, version comparison, and offline installation are available from the
-**Version Management** page. You can switch between official GitHub, GitCode, and GitHub
-mirror proxies or add custom HTTPS mirror prefixes; application and core updates prefer the selected
-channel and fall back automatically.
+To check the models exposed by the proxy, replace the placeholder with your
+proxy key and run:
 
-Application and core updates are each checked once in the background at startup, then automatically
-on every fifth visit to **Version Management** (visits 5, 10, 15, and so on). Their respective
-**Check for Updates** buttons remain available for manual checks. Re-renders do not count as visits,
-and restarting the application resets the counter. Changing download sources does not trigger a
-check, and reopening the page preserves the saved source. Checks do not automatically download or
-install updates.
+```sh
+export LLAMAPROXY_API_KEY='your-proxy-api-key'
+curl --fail-with-body 'http://127.0.0.1:11432/v1/models' \
+  -H "Authorization: Bearer ${LLAMAPROXY_API_KEY}"
+```
 
-### OAuth account authorization
+The response lists the available model IDs. Use one of those IDs in your
+client. If you change the port, listen address, or TLS settings, use the URL
+shown on **Home** rather than the default above.
 
-![OAuth account authorization](docs/screenshots/en/2.png)
+## Manage connections
 
-The OAuth page centralizes browser-based authorization for supported providers:
+The standard console provides controls beyond the initial setup:
 
-- Codex OAuth
-- Claude OAuth
-- Antigravity OAuth
-- Kimi OAuth
-- xAI OAuth
+- **OAuth** manages account logins, credential files, and provider quota
+  queries. Login options include Codex, Claude, Antigravity, Kimi, and xAI.
+- **API Access** manages Codex, Claude, Gemini, DeepSeek, and other
+  OpenAI-compatible providers, including model selection and health checks.
+- **Agent Configuration** manages client settings, manual backups, model
+  catalogs, and client launches. It also includes Codex session management.
+- **Usage** shows request history, token counts, timing, and cost estimates.
+- **Advanced Settings** controls authentication keys, network access, routing,
+  retries, and logging.
 
-LlamaProxy opens the authorization page in the browser and supports completing the callback
-flow when an automatic redirect is unavailable.
+The interface supports English, Japanese, Simplified Chinese, and Traditional
+Chinese, with light, dark, and system appearance settings.
 
-### API provider aggregation
+## Protect your credentials and data
 
-![API provider aggregation](docs/screenshots/en/3.png)
+The proxy listens on `127.0.0.1:11432` by default. Leave **Allow LAN** off unless
+other machines need access. Before enabling it, replace the default key and
+restrict access with your firewall. An empty authentication-key list allows
+requests without a configured key.
 
-The provider workspace manages upstream API credentials and endpoints by protocol or provider:
+LlamaProxy stores provider credentials and proxy settings on disk. The app also
+keeps a separate, generated management secret for its connection to CLIProxyAPI.
+Do not use that secret as a client API key.
 
-- Codex
-- OpenAI-compatible providers
-- DeepSeek
-- Claude
-- Gemini
+The runtime data directory depends on how you run the app:
 
-You can add multiple connections, search existing entries, refresh provider state, and use them
-through the unified local CLIProxyAPI endpoint. Requests and responses can be converted between
-supported OpenAI, Claude, Gemini, and compatible formats.
+- For the macOS app bundle, it is
+  `~/Library/Application Support/com.llamaproxy.app/`.
+- For portable executables, it is the directory containing the executable.
+  This also applies to unbundled development builds.
 
-### Usage history and token analytics
+That directory contains `config.toml` for app settings, `cpa-core/config.yaml`
+for proxy configuration, and `oauth/` for credentials by default. Usage history
+is in `usage-records/usage.db`, and manual client backups are under
+`backups/agents/`. Client configuration changes are written to each client's
+own configuration files, outside the LlamaProxy data directory.
 
-![Usage history and token analytics](docs/screenshots/en/4.png)
+Quit the app before copying its runtime data directory for a backup. Treat the
+copy as sensitive: configuration files and client backups can contain keys or
+tokens. Redact credentials before attaching logs or configuration to an issue.
 
-The Usage page helps you understand local request activity and token consumption:
+## Update or troubleshoot
 
-- Review request totals, token counts, success rate, throughput, cache hit rate, and estimated cost.
-- Filter usage by time, model, provider, source, key, and result.
-- Inspect request/token trends and input, output, reasoning, and cache usage.
-- Browse request details, analysis views, and price statistics.
-- Collect through CPA's real-time usage subscription with a durable local inbox and automatic HTTP fallback.
-- Upgrade legacy usage databases once at startup after saving a backup under `usage-records/backups`.
+Use **Version Management** to check the desktop app, proxy core, and Codex model
+catalog independently. Updating the app restarts it and briefly interrupts the
+managed core. Schedule updates between requests.
 
-### Agent client configuration
+If an in-app update fails, download a complete package from
+[GitHub Releases](https://github.com/rselbach/LlamaProxy/releases/latest).
+Back up the runtime data directory before a manual replacement.
 
-![Agent client configuration](docs/screenshots/en/5.png)
+- If the core is missing and GitHub is unavailable, use **Version Management** →
+  **Offline Install** to install the bundled core. Offline installation does
+  not make provider requests work without a network connection.
+- If **OAuth**, **API Access**, or **Agent Configuration** is disabled, start
+  the core from **Home**.
+- If a client cannot connect, check the core status, copied URL, proxy key, and
+  selected model. Provider credentials belong in LlamaProxy; the client needs
+  the proxy key.
+- If a client is not detected, install it and refresh **Agent Configuration**.
 
-The Agents page detects installed desktop and CLI clients and helps connect them to the local
-proxy. Supported clients include:
+Report reproducible problems in
+[GitHub Issues](https://github.com/rselbach/LlamaProxy/issues), including your
+operating system, architecture, app version, and core version.
 
-- Claude Code
-- Claude Desktop
-- Codex
-- OpenCode
-- OpenClaw
-- Hermes Agent
-- Pi (with the CLIProxyAPI provider extension)
-- ZCode
-- Kimi Code
-- Grok Build
+## Develop
 
-For supported clients, the application can synchronize the available model catalog, select a
-default model, back up the original configuration before applying managed settings, and restore the
-previous configuration.
+The frontend uses React, TypeScript, and Vite. Tauri 2 provides the desktop
+shell, with Rust code for core management, filesystem access, and client
+configuration.
 
-## Additional Capabilities
+Install [Bun](https://bun.sh/) 1.3.14, Rust, and the
+[Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+Then, from the repository root, install dependencies and start the desktop app:
 
-- Manage core settings, API keys, remote management credentials, and routing strategy.
-- Create client-visible model aliases and map them to provider models and reasoning levels.
-- Upload, download, inspect, and manage authentication files.
-- Review provider quotas and account availability.
-- Keep the application available from the macOS menu bar or Windows system tray.
+```sh
+bun install --frozen-lockfile
+bun tauri dev
+```
 
-## Quick Start
+A source checkout does not include the core archive. Use **Version Management**
+→ **Install Latest** if no core is available. `bun run dev` starts only the Vite
+frontend; core management and other desktop operations require Tauri.
 
-1. Download the package for your operating system from
-   [GitHub Releases](https://github.com/rselbach/LlamaProxy/releases/latest).
-2. Extract the Windows or Linux archive, or open the macOS DMG.
-3. Launch LlamaProxy.
-4. Open **Version Management** and install the bundled or latest CLIProxyAPI core.
-5. Return to **Home**, start the core, then copy the required local endpoint or configure an OAuth/API provider.
+Run the TypeScript checks, frontend tests, production frontend build, and Rust
+tests from the repository root:
 
-## Upgrading
+```sh
+bun run check
+bun test
+bun run build
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-Every Windows release publishes both the complete ZIP and the legacy `update` ZIP. This keeps in-app updates available to older clients that have not migrated yet, while newer clients use the complete package so the bundled core can be updated too.
+Rust configuration tests reject paths with symlink components. On macOS, resolve
+the temporary-directory path before running them:
 
-Current Windows, Linux, and macOS release packages support in-app automatic updates. Linux replaces the portable application files while preserving runtime data, and macOS replaces the signed application bundle. Each platform waits for the new version to confirm a successful launch and rolls back automatically if startup fails. The installation directory must be writable by the current user.
+```sh
+TMPDIR="$(cd "${TMPDIR:-/tmp}" && pwd -P)" \
+  cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-Existing Linux and macOS installations need one manual upgrade to a release that includes the cross-platform auto-update marker. In-app updates are available after that release has been launched once.
+The standalone browser checks in `tests/*-ui.cjs` are separate from `bun test`
+and require Playwright and a running Vite server.
 
-If you are running v0.2.5 or earlier, perform one manual migration: exit EasyCLIProxyAPI, download the latest complete Windows ZIP for your architecture, then copy the contents of its top-level directory over the existing installation directory. Do not delete the existing directory first; user data such as `config.toml`, `oauth`, and `cpa-core/config.yaml` will remain in place. After launching the new version, later releases can use in-app automatic updates.
+Before using `build.sh` again, back up any runtime configuration you need from
+`bin-work/cpa-core/`. The script replaces that directory.
 
-## Supported Platforms
+To build a portable executable with the pinned core archive, run `./build.sh`
+on macOS or Linux, or `.\build.ps1` in PowerShell on Windows. The scripts
+download the core and place the result in `bin-work/`. Use `./run.sh` or
+`.\run.ps1` to launch it. These are unbundled builds, not the signed macOS app
+produced by the release workflow.
 
-GitHub Actions builds the following release packages:
+The app version is defined in `src-tauri/Cargo.toml`. `core-version.txt` pins the
+bundled CLIProxyAPI version. Release packaging is defined in
+[`.github/workflows/release.yml`](.github/workflows/release.yml).
 
-| Operating System | Architecture | Package |
-| --- | --- | --- |
-| Windows | amd64, aarch64 | ZIP |
-| macOS | amd64, aarch64 | DMG |
-| Linux | amd64, aarch64 | TAR.GZ |
+## License
 
-## Related Project
-
-- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — the proxy core managed by this application.
+[MIT](LICENSE). LlamaProxy builds on EasyCLIProxyAPI by Router-For.ME. The
+[upstream license notice](LICENSE-EasyCLIProxyAPI) is retained in this repository.

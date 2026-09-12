@@ -4,14 +4,14 @@ use super::*;
 fn core_failure_messages_expose_outcomes_without_secret_source_text() {
     for detail in [
         "YAML source: key: secret-token",
-        "已恢复原配置 secret-token",
-        "自动恢复失败 secret-token",
-        "配置已变化 secret-token",
+        "restored the original configuration secret-token",
+        "automatic restoration failed secret-token",
+        "Configuration changed secret-token",
     ] {
         let rendered = agent_core_error(detail.into());
         assert!(!rendered.contains("secret-token"));
-        if detail.contains("自动恢复失败") {
-            assert!(rendered.contains("回滚失败"));
+        if detail.contains("automatic restoration failed") {
+            assert!(rendered.contains("rollback failed"));
         }
     }
 }

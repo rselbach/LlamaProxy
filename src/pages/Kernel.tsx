@@ -54,7 +54,7 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
 
   const [installedAppVersion, setInstalledAppVersion] = useState('');
   const [listenHost, setListenHost] = useState('127.0.0.1');
-  const [customPort, setCustomPort] = useState('8317');
+  const [customPort, setCustomPort] = useState('11432');
   const [processBusy, setProcessBusy] = useState(false);
   const processFeedback = useAppNotice();
   const { showNotice: showProcessNotice, clearNotice: clearProcessNotice } = processFeedback;
@@ -65,7 +65,7 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
   const [showHomeApiKey, setShowHomeApiKey] = useState(false);
   const [tlsEnabled, setTlsEnabled] = useState(false);
 
-  const savedPortRef = useRef(8317);
+  const savedPortRef = useRef(11432);
   const copiedApiTimerRef = useRef<number | null>(null);
 
   useEffect(() => {

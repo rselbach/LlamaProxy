@@ -180,6 +180,7 @@ export function buildProviderHealthProbe(
   };
 }
 
+// Keep compatibility with older native builds and upstream Chinese timeout diagnostics.
 const isTimeoutError = (message: string) =>
   /timed?\s*out|timeout|deadline has elapsed|超时/i.test(message);
 

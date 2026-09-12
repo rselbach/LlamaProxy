@@ -121,11 +121,11 @@ fn exiting_rejects_new_core_operations_and_cleans_up_an_in_flight_child() {
 
     assert!(lock_core_operation(&state)
         .unwrap_err()
-        .contains("应用正在退出"));
+        .contains("The app is exiting"));
     assert!(state
         .store_child(child)
         .unwrap_err()
-        .contains("应用正在退出"));
+        .contains("The app is exiting"));
     assert!(!is_process_alive(child_id));
     assert_eq!(state.managed_pid(), None);
 }
@@ -378,7 +378,7 @@ fn successful_core_install_reports_automatic_restart_failure() {
     let result = combine_install_and_restart_results(Ok("installed"), Err("port busy".into()));
     assert_eq!(
         result.unwrap_err(),
-        "内核已安装，但自动恢复运行失败: port busy"
+        "The core is installed, but automatic restart failed: port busy"
     );
 }
 
@@ -397,7 +397,7 @@ fn failed_core_install_reports_restart_failure_too() {
     );
     assert_eq!(
         result.unwrap_err(),
-        "checksum mismatch；自动恢复原内核运行状态也失败: port busy"
+        "checksum mismatch; failed to automatically restore the original core running state: port busy"
     );
 }
 
@@ -784,9 +784,40 @@ fn core_start_log_captures_stdout_and_stderr() {
     assert!(command.status().unwrap().success());
 
     let output = fs::read_to_string(&log_path).unwrap();
-    assert!(output.contains("===== CPA 内核启动"));
+    assert!(output.contains("===== CPA core startup"));
     assert!(output.contains("core stdout marker"));
     assert!(output.contains("core stderr marker"));
     assert!(!output.contains("stale startup output"));
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn english_core_download_cancellation_keeps_the_cancelled_phase_and_cleans_up() {
+    let token = CancellationToken::new();
+    let archive =
+        std::env::temp_dir().join(format!("llamaproxy-cancel-{}.tar.gz", std::process::id()));
+    fs::write(&archive, b"partial download").unwrap();
+    token.cancel();
+    let error = ensure_not_cancelled(&token, Some(&archive)).unwrap_err();
+    assert_eq!(error, "Download cancelled");
+    assert_eq!(core_install_error_phase(&error), "已取消");
+    assert!(!archive.exists());
+    for message in ["Download canceled", "DOWNLOAD CANCELLED", "已取消下载"] {
+        assert_eq!(core_install_error_phase(message), "已取消");
+    }
+    assert_eq!(
+        core_install_error_phase("SHA-256 verification failed"),
+        "安装失败"
+    );
+    assert_eq!(
+        core_install_error_phase("The app is exiting; core operation cancelled"),
+        "已取消"
+    );
+}
+
+#[test]
+fn core_status_diagnostic_is_english() {
+    let status = current_core_status(None, Some(0)).unwrap();
+    assert!(status.message.is_ascii(), "{}", status.message);
+    assert!(status.message.starts_with("The CPA core"));
 }

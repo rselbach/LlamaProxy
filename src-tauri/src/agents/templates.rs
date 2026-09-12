@@ -36,7 +36,8 @@ pub(crate) fn build_codex_template_auth(home: &Path) -> Result<AgentFileUpdate, 
     }
     Ok(AgentFileUpdate {
         path,
-        after: serde_json::to_string_pretty(&target).map_err(|_| "生成认证模板失败")?,
+        after: serde_json::to_string_pretty(&target)
+            .map_err(|_| "Failed to generate the authentication template")?,
     })
 }
 
@@ -47,7 +48,7 @@ pub(crate) fn build_pi_template_updates(
     model: &str,
 ) -> Result<Vec<AgentFileUpdate>, String> {
     if port == 0 || api_key.trim().is_empty() {
-        return Err("CPA 地址或密钥无效".into());
+        return Err("Invalid CPA address or key".into());
     }
     let settings = serde_json::json!({"packages": [PI_CLIPROXYAPI_PACKAGE]}).to_string();
     Ok(vec![
@@ -89,14 +90,14 @@ pub(crate) async fn prepare_desktop_core_update(
 // Management API/parser errors may quote configuration contents. Keep actionable transaction
 // outcomes without forwarding response bodies, YAML source lines or credentials to the UI.
 pub(crate) fn agent_core_error(error: String) -> String {
-    if error.contains("自动恢复失败") || error.contains("回滚失败") {
-        "内核别名或智能体配置写入失败且回滚失败，请检查当前配置".into()
-    } else if error.contains("已恢复原配置") {
-        "内核别名或智能体配置写入失败，已恢复原配置，请检查连接和模型映射后重试".into()
-    } else if error.contains("配置已变化") {
-        "内核配置已变化，请重新预览后重试".into()
+    if error.contains("automatic restoration failed") || error.contains("rollback failed") {
+        "Failed to write core aliases or agent configuration, and rollback failed; check the current configuration".into()
+    } else if error.contains("restored the original configuration") {
+        "Failed to write core aliases or agent configuration; restored the original configuration. Check the connection and model mappings, then retry".into()
+    } else if error.contains("Configuration changed") {
+        "Core configuration changed; preview again and retry".into()
     } else {
-        "内核模型别名同步失败，请检查内核连接和模型映射".into()
+        "Failed to sync core model aliases; check the core connection and model mappings".into()
     }
 }
 
@@ -131,7 +132,7 @@ async fn prepare_template_plan(
         let model = resolve_pi_default_model(config, model).await?;
         let _guard = AGENT_CONFIG_FILE_LOCK
             .lock()
-            .map_err(|_| "配置文件锁已损坏")?;
+            .map_err(|_| "Configuration file lock is poisoned")?;
         let before = config_images(&paths)?;
         let updates = build_pi_template_updates(home, config.port, api_key, &model)?;
         let after = prepare_config_updates(client, &paths, &before, &updates, true)?;
@@ -154,7 +155,7 @@ async fn prepare_template_plan(
         )?;
         let _guard = AGENT_CONFIG_FILE_LOCK
             .lock()
-            .map_err(|_| "配置文件锁已损坏")?;
+            .map_err(|_| "Configuration file lock is poisoned")?;
         let before = config_images(&paths)?;
         let updates = build_agent_template_updates(AgentDefaultConfiguration {
             client: parsed,
@@ -195,7 +196,7 @@ async fn prepare_template_plan(
             &mappings,
             core_revision,
         ))
-        .map_err(|_| "生成模板预览失败")?,
+        .map_err(|_| "Failed to generate template preview")?,
     );
     let preview = TemplatePreview {
         revision,
@@ -220,14 +221,14 @@ async fn execute_template_plan(
     revision: &str,
 ) -> Result<AgentConfigActionResult, String> {
     if revision != plan.preview.revision {
-        return Err("预览后配置或模板发生变化，请重新预览基础配置模板".into());
+        return Err("Configuration or template changed after preview; preview the base configuration template again".into());
     }
     let commit = || {
         let _guard = AGENT_CONFIG_FILE_LOCK
             .lock()
-            .map_err(|_| "配置文件锁已损坏")?;
+            .map_err(|_| "Configuration file lock is poisoned")?;
         if mapping_revision(&plan.client, &plan.paths)? != plan.mapping_revision {
-            return Err("模型映射已变化，请重新预览".into());
+            return Err("Model mappings changed; please preview again".into());
         }
         commit_config_with_mappings(
             &plan.client,
@@ -258,7 +259,10 @@ pub(crate) async fn preview_agent_config_template(
     claude_code_model_mappings: Option<ClaudeDesktopModelMappings>,
     claude_desktop_model_mappings: Option<ClaudeDesktopModelMappings>,
 ) -> Result<TemplatePreview, String> {
-    let home = app.path().home_dir().map_err(|_| "无法获取用户目录")?;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|_| "Unable to locate the home directory")?;
     let config = app.state::<GuiConfigState>().snapshot()?;
     Ok(prepare_template_plan(
         &config,
@@ -283,7 +287,10 @@ pub(crate) async fn apply_agent_config_template(
     claude_desktop_model_mappings: Option<ClaudeDesktopModelMappings>,
     revision: String,
 ) -> Result<AgentConfigActionResult, String> {
-    let home = app.path().home_dir().map_err(|_| "无法获取用户目录")?;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|_| "Unable to locate the home directory")?;
     let config = app.state::<GuiConfigState>().snapshot()?;
     let plan = prepare_template_plan(
         &config,

@@ -188,7 +188,7 @@ export function ConfigPanelPage() {
     <InlineNotice key={feedback.revision} notice={feedback.notice} onDismiss={feedback.clearNotice} />
   );
   const [activeSubpage, setActiveSubpage] = useState<ConfigSubpage>('general');
-  const [portDraft, setPortDraft] = useState('8317');
+  const [portDraft, setPortDraft] = useState('11432');
   const [hostDraft, setHostDraft] = useState('127.0.0.1');
   const [proxyUrlDraft, setProxyUrlDraft] = useState('');
   const [sessionAffinityDraft, setSessionAffinityDraft] = useState(false);
