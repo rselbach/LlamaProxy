@@ -22,15 +22,13 @@ test('macOS uses a new primary channel and keeps the legacy manifest alias', () 
   expect(portableUpdateManifestNames('linux')).toEqual(['portable-update-linux.json']);
 });
 
-test('macOS manifest CLI publishes both update channels', async () => {
+test('macOS manifest CLI publishes both update channels with only Apple silicon', async () => {
   const root = await mkdtemp(join(tmpdir(), 'easycli-darwin-manifest-cli-'));
   try {
-    for (const arch of ['amd64', 'aarch64']) {
-      await writeFile(
-        join(root, `LlamaProxy-v1.2.3-Darwin-${arch}.dmg`),
-        `darwin ${arch} release`,
-      );
-    }
+    await writeFile(
+      join(root, 'LlamaProxy-v1.2.3-Darwin-aarch64.dmg'),
+      'Greendale Apple silicon release',
+    );
     const script = fileURLToPath(new URL('../scripts/manifest.mjs', import.meta.url));
     const result = spawnSync('node', [
       script,
@@ -53,6 +51,7 @@ test('macOS manifest CLI publishes both update channels', async () => {
       await readFile(join(root, 'portable-update-darwin.json'), 'utf8'),
     );
     expect(legacy).toEqual(primary);
+    expect(Object.keys(primary.assets)).toEqual(['darwin-aarch64']);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -145,7 +144,11 @@ describe('跨平台便携更新清单', () => {
       });
 
       expect(manifest.fullAssets).toBeUndefined();
-      for (const arch of ['amd64', 'aarch64']) {
+      const architectures = platform === 'darwin' ? ['aarch64'] : ['amd64', 'aarch64'];
+      expect(Object.keys(manifest.assets)).toEqual(
+        architectures.map((arch) => `${platform}-${arch}`),
+      );
+      for (const arch of architectures) {
         expect(manifest.assets[`${platform}-${arch}`].url).toEndWith(
           `/LlamaProxy-v1.2.3-${display}-${arch}.${suffix}`,
         );

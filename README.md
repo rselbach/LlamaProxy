@@ -22,16 +22,17 @@ LlamaProxy is a fork of
 
 Download a package from [GitHub Releases](https://github.com/rselbach/LlamaProxy/releases/latest)
 for your operating system and processor. Release names use `amd64` for x86-64
-and `aarch64` for ARM64, including Apple silicon.
+and `aarch64` for ARM64, including Apple silicon. Releases are built for macOS
+on Apple silicon and Linux on both architectures. Windows and Intel macOS
+release builds are disabled.
 
-- On macOS, open the `.dmg` and drag **LlamaProxy** into **Applications**.
-- On Windows, extract the entire `.zip` into a writable folder and run
-  `LlamaProxy.exe`.
+- On macOS with Apple silicon, open the `.dmg` and drag **LlamaProxy** into
+  **Applications**.
 - On Linux, extract the entire `.tar.gz` into a writable folder and run
   `./LlamaProxy` from that folder. The app requires WebKitGTK 4.1 and GTK 3 runtime
   libraries.
 
-Keep the Windows and Linux package contents together. The executable uses the
+Keep the Linux package contents together. The executable uses the
 adjacent `cpa-core` directory and `core-version.txt` to install the bundled core.
 A separate CLIProxyAPI installation is not required.
 

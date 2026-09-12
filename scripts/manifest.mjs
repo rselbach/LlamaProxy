@@ -34,9 +34,9 @@ export async function generatePortableUpdateManifest({
 }) {
   const resolvedDirectory = resolve(directory ?? 'artifacts');
   const platformSpecs = {
-    windows: { display: 'Windows', suffix: 'zip' },
-    linux: { display: 'Linux', suffix: 'tar.gz' },
-    darwin: { display: 'Darwin', suffix: 'dmg' },
+    windows: { display: 'Windows', suffix: 'zip', architectures: ['amd64', 'aarch64'] },
+    linux: { display: 'Linux', suffix: 'tar.gz', architectures: ['amd64', 'aarch64'] },
+    darwin: { display: 'Darwin', suffix: 'dmg', architectures: ['aarch64'] },
   };
   const normalizedPlatform = String(platform).trim().toLowerCase();
   const platformSpec = platformSpecs[normalizedPlatform];
@@ -64,7 +64,7 @@ export async function generatePortableUpdateManifest({
   }
 
   const assets = {};
-  for (const arch of ['amd64', 'aarch64']) {
+  for (const arch of platformSpec.architectures) {
     const filename = `LlamaProxy-${tag}-${platformSpec.display}-${arch}.${platformSpec.suffix}`;
     const path = join(resolvedDirectory, filename);
     const [contents, metadata] = await Promise.all([readFile(path), stat(path)]);

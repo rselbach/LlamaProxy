@@ -80,26 +80,11 @@ jobs:
             display_os: Linux
             arch: aarch64
             suffix: tar.gz
-          - runner: macos-15-intel
-            os: darwin
-            display_os: Darwin
-            arch: amd64
-            suffix: dmg
           - runner: macos-15
             os: darwin
             display_os: Darwin
             arch: aarch64
             suffix: dmg
-          - runner: windows-2025
-            os: windows
-            display_os: Windows
-            arch: amd64
-            suffix: zip
-          - runner: windows-11-arm
-            os: windows
-            display_os: Windows
-            arch: aarch64
-            suffix: zip
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
@@ -159,7 +144,7 @@ jobs:
       - name: Prepare portable directory
         run: >-
           node scripts/portable.mjs
-          --binary "src-tauri/target/release/llamaproxy${{ matrix.os == 'windows' && '.exe' || '' }}"
+          --binary "src-tauri/target/release/llamaproxy"
           --output "release/${{ steps.package.outputs.stem }}"
           --os "${{ matrix.os }}"
           --arch "${{ matrix.arch }}"
@@ -277,11 +262,6 @@ jobs:
       - name: Archive Linux release
         if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'linux'
         run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
-      - name: Archive Windows release
-        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'windows'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "release/${{ steps.package.outputs.stem }}" -DestinationPath "${{ steps.package.outputs.stem }}.zip"
       - uses: actions/upload-artifact@v7
         if: env.PACKAGE_RELEASE == 'true'
         with:
@@ -315,7 +295,7 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          for platform in windows linux darwin; do
+          for platform in linux darwin; do
             node scripts/manifest.mjs \
               --directory artifacts \
               --platform "$platform" \

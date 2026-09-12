@@ -1,7 +1,7 @@
 [package]
 name = "llamaproxy"
 # Single source of truth for the desktop app version.
-version = "0.1.0"
+version = "0.2.0"
 description = "LlamaProxy desktop management tool for CLIProxyAPI"
 authors = ["lzt404"]
 edition = "2021"
