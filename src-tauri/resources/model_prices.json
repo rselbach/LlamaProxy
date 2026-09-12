@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-07",
+  "updatedAt": "2026-09-12",
   "models": {
     "gpt-6-astra": { "inputPer1M": 10.0, "outputPer1M": 50.0, "cacheReadPer1M": 1.0, "cacheCreationPer1M": 12.5 },
     "gpt-5.6": { "inputPer1M": 4.0, "outputPer1M": 20.0, "cacheReadPer1M": 0.4, "cacheCreationPer1M": 5.0 },
@@ -78,6 +78,27 @@
     "grok-4": { "inputPer1M": 1.25, "outputPer1M": 2.5, "cacheReadPer1M": 0.2 },
     "grok-4-1-fast": { "inputPer1M": 1.25, "outputPer1M": 2.5, "cacheReadPer1M": 0.2 },
     "grok-3": { "inputPer1M": 1.25, "outputPer1M": 2.5, "cacheReadPer1M": 0.2 },
-    "grok-3-mini": { "inputPer1M": 1.25, "outputPer1M": 2.5, "cacheReadPer1M": 0.2 }
+    "grok-3-mini": { "inputPer1M": 1.25, "outputPer1M": 2.5, "cacheReadPer1M": 0.2 },
+    "accounts/fireworks/models/kimi-k3": { "inputPer1M": 3.0, "outputPer1M": 15.0, "cacheReadPer1M": 0.3 },
+    "accounts/fireworks/routers/kimi-k3-fast": { "inputPer1M": 4.5, "outputPer1M": 22.5, "cacheReadPer1M": 0.45 },
+    "accounts/fireworks/routers/kimi-k3-us": { "inputPer1M": 3.3, "outputPer1M": 16.5, "cacheReadPer1M": 0.33 },
+    "accounts/fireworks/models/kimi-k2p7-code": { "inputPer1M": 0.95, "outputPer1M": 4.0, "cacheReadPer1M": 0.19 },
+    "accounts/fireworks/models/kimi-k2p6": { "inputPer1M": 0.95, "outputPer1M": 4.0, "cacheReadPer1M": 0.16 },
+    "accounts/fireworks/models/deepseek-v4p1-flash": { "inputPer1M": 0.22, "outputPer1M": 0.66, "cacheReadPer1M": 0.007 },
+    "accounts/fireworks/models/deepseek-v4-pro-0813": { "inputPer1M": 1.32, "outputPer1M": 3.96, "cacheReadPer1M": 0.044 },
+    "accounts/fireworks/models/deepseek-v4-flash-0731": { "inputPer1M": 0.22, "outputPer1M": 0.66, "cacheReadPer1M": 0.007 },
+    "accounts/fireworks/models/deepseek-v4-flash-vision-exp": { "inputPer1M": 0.22, "outputPer1M": 0.66, "cacheReadPer1M": 0.007 },
+    "accounts/fireworks/models/glm-5p3-flash": { "inputPer1M": 0.15, "outputPer1M": 0.5, "cacheReadPer1M": 0.03 },
+    "accounts/fireworks/models/glm-5p3": { "inputPer1M": 1.4, "outputPer1M": 4.4, "cacheReadPer1M": 0.26 },
+    "accounts/fireworks/routers/glm-5p3-fast": { "inputPer1M": 2.1, "outputPer1M": 6.6, "cacheReadPer1M": 0.39 },
+    "accounts/fireworks/models/glm-5p2": { "inputPer1M": 1.4, "outputPer1M": 4.4, "cacheReadPer1M": 0.14 },
+    "accounts/fireworks/routers/glm-5p2-fast": { "inputPer1M": 2.1, "outputPer1M": 6.6, "cacheReadPer1M": 0.21 },
+    "accounts/fireworks/routers/glm-5p2-fast-us": { "inputPer1M": 2.1, "outputPer1M": 6.6, "cacheReadPer1M": 0.21 },
+    "accounts/fireworks/models/qwen3p8-max": { "inputPer1M": 2.0, "outputPer1M": 6.0, "cacheReadPer1M": 0.25 },
+    "accounts/fireworks/models/minimax-m3": { "inputPer1M": 0.3, "outputPer1M": 1.2, "cacheReadPer1M": 0.06 },
+    "accounts/fireworks/models/gpt-oss-120b": { "inputPer1M": 0.15, "outputPer1M": 0.6, "cacheReadPer1M": 0.015 },
+    "accounts/fireworks/models/muse-glimmer-30b": { "inputPer1M": 0.35, "outputPer1M": 1.5, "cacheReadPer1M": 0.04 },
+    "accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b": { "inputPer1M": 0.05, "outputPer1M": 0.2, "cacheReadPer1M": 0.01 },
+    "accounts/fireworks/models/nemotron-3-ultra-nvfp4": { "inputPer1M": 0.6, "outputPer1M": 2.4, "cacheReadPer1M": 0.12 }
   }
 }

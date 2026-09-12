@@ -116,6 +116,15 @@ describe('API 接入健康检测', () => {
     ]);
   });
 
+  it('Fireworks 模型发现使用 OpenAI 兼容模型端点', () => {
+    expect(modelEndpointCandidates(
+      'openai',
+      'https://api.fireworks.ai/inference/v1',
+    )).toEqual([
+      'https://api.fireworks.ai/inference/v1/models',
+    ]);
+  });
+
   it('把不含版本号的中转地址视为完整 API 路径前缀', () => {
     const baseUrl = 'https://relay.example/custom/openai';
     const probe = buildProviderHealthProbe(

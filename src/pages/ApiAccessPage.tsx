@@ -41,6 +41,7 @@ import {
 import claudeIcon from '../assets/icons/claude.svg';
 import codexIcon from '../assets/icons/codex.svg';
 import deepseekIcon from '../assets/icons/deepseek.svg';
+import fireworksIcon from '../assets/icons/fireworks.svg';
 import geminiIcon from '../assets/icons/gemini.svg';
 import openaiIcon from '../assets/icons/openai-light.svg';
 import {
@@ -78,9 +79,12 @@ export type ProviderSection =
   | 'claude-api-key'
   | 'openai-compatibility';
 
-export type ProviderCategory = ProviderSection | 'deepseek';
+type ProviderPresetCategory = 'deepseek' | 'fireworks';
+
+export type ProviderCategory = ProviderSection | ProviderPresetCategory;
 
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+export const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
 export const OPENAI_THINKING_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
 export const DEEPSEEK_THINKING_LEVELS = ['low', 'high', 'max'] as const;
 
@@ -91,6 +95,27 @@ type ProviderDefinition = {
   labelKey: MessageKey;
   icon: string;
   openAi: boolean;
+};
+
+type ProviderPreset = {
+  name: string;
+  baseUrl: string;
+  hostname: string;
+};
+
+const providerPresetCategories: ProviderPresetCategory[] = ['deepseek', 'fireworks'];
+
+const providerPresets: Record<ProviderPresetCategory, ProviderPreset> = {
+  deepseek: {
+    name: 'DeepSeek',
+    baseUrl: DEEPSEEK_BASE_URL,
+    hostname: 'api.deepseek.com',
+  },
+  fireworks: {
+    name: 'Fireworks',
+    baseUrl: FIREWORKS_BASE_URL,
+    hostname: 'api.fireworks.ai',
+  },
 };
 
 type ProviderRow = {
@@ -230,6 +255,14 @@ const providerDefinitions: ProviderDefinition[] = [
     icon: deepseekIcon,
     openAi: true,
   },
+  {
+    id: 'fireworks',
+    section: 'openai-compatibility',
+    responseKey: 'openai-compatibility',
+    labelKey: 'apiAccess.provider.fireworks',
+    icon: fireworksIcon,
+    openAi: true,
+  },
   { id: 'claude-api-key', section: 'claude-api-key', responseKey: 'claude-api-key', labelKey: 'apiAccess.provider.claude', icon: claudeIcon, openAi: false },
   { id: 'gemini-api-key', section: 'gemini-api-key', responseKey: 'gemini-api-key', labelKey: 'apiAccess.provider.gemini', icon: geminiIcon, openAi: false },
 ];
@@ -251,18 +284,36 @@ const emptyRecords = (): Record<ProviderSection, Record<string, unknown>[]> => (
 const definitionFor = (category: ProviderCategory) =>
   providerDefinitions.find((item) => item.id === category) ?? providerDefinitions[0];
 
-const isDeepSeekRecord = (record: Record<string, unknown>) => {
+const providerPresetCategoryForRecord = (
+  record: Record<string, unknown>,
+): ProviderPresetCategory | null => {
+  const baseUrl = readString(record, 'base-url', 'baseUrl').trim();
+  if (baseUrl) {
+    try {
+      const hostname = new URL(baseUrl).hostname.toLowerCase();
+      const endpointPreset = providerPresetCategories.find(
+        (presetCategory) => providerPresets[presetCategory].hostname === hostname,
+      );
+      if (endpointPreset) return endpointPreset;
+    } catch {
+      // Fall back to the provider name for malformed legacy values.
+    }
+  }
   const name = readString(record, 'name').trim().toLowerCase();
-  const baseUrl = readString(record, 'base-url', 'baseUrl').trim().toLowerCase();
-  return name.includes('deepseek') || /^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(baseUrl);
+  return providerPresetCategories.find(
+    (presetCategory) => name.includes(presetCategory),
+  ) ?? null;
 };
 
 export const providerCategoryMatchesRecord = (
   category: ProviderCategory,
   record: Record<string, unknown>,
 ) => {
-  if (category === 'deepseek') return isDeepSeekRecord(record);
-  if (category === 'openai-compatibility') return !isDeepSeekRecord(record);
+  const presetCategory = providerPresetCategoryForRecord(record);
+  if (category === 'deepseek' || category === 'fireworks') {
+    return presetCategory === category;
+  }
+  if (category === 'openai-compatibility') return presetCategory === null;
   return true;
 };
 
@@ -472,11 +523,13 @@ const thinkingLevelsFromModels = (models: ModelOption[]): string[] => {
 
 const draftFromRow = (row: ProviderRow): ProviderDraft => {
   const definition = definitionFor(row.section);
-  const isDeepSeek = row.section === 'openai-compatibility' && isDeepSeekRecord(row.record);
+  const presetCategory = row.section === 'openai-compatibility'
+    ? providerPresetCategoryForRecord(row.record)
+    : null;
   return {
     name: row.name,
     apiKey: definition.openAi ? row.apiKeys.join('\n') : row.apiKey,
-    remark: row.remark || (definition.openAi && !isDeepSeek ? row.name : ''),
+    remark: row.remark || (definition.openAi && presetCategory === null ? row.name : ''),
     baseUrl: row.baseUrl,
     priority: row.priority === null ? '' : String(row.priority),
     models: row.models,
@@ -533,21 +586,24 @@ const emptyProviderDraft = (): ProviderDraft => ({
 export const createProviderDraft = (category: ProviderCategory): ProviderDraft => {
   const draft = emptyProviderDraft();
   if (category === 'openai-compatibility') return { ...draft, thinkingLevels: [] };
-  if (category !== 'deepseek') return draft;
+  if (category !== 'deepseek' && category !== 'fireworks') return draft;
+  const preset = providerPresets[category];
   return {
     ...draft,
-    name: 'DeepSeek',
+    name: preset.name,
     remark: '',
-    baseUrl: DEEPSEEK_BASE_URL,
-    thinkingLevels: [...DEEPSEEK_THINKING_LEVELS],
+    baseUrl: preset.baseUrl,
+    ...(category === 'deepseek'
+      ? { thinkingLevels: [...DEEPSEEK_THINKING_LEVELS] }
+      : {}),
   };
 };
 
 export const applyProviderRemarkIdentity = (
   category: ProviderCategory,
   draft: ProviderDraft,
-): ProviderDraft => category === 'deepseek'
-  ? { ...draft, name: draft.name.trim() || 'DeepSeek' }
+): ProviderDraft => category === 'deepseek' || category === 'fireworks'
+  ? { ...draft, name: draft.name.trim() || providerPresets[category].name }
   : definitionFor(category).openAi
     ? { ...draft, name: draft.remark.trim() }
     : draft;
@@ -556,7 +612,11 @@ export const applyProviderPreset = (
   category: ProviderCategory,
   draft: ProviderDraft,
 ): ProviderDraft => {
-  if (!definitionFor(category).openAi || draft.thinkingLevels === undefined) return draft;
+  if (
+    category === 'fireworks'
+    || !definitionFor(category).openAi
+    || draft.thinkingLevels === undefined
+  ) return draft;
   const levels = category === 'deepseek'
     ? [...DEEPSEEK_THINKING_LEVELS]
     : draft.thinkingLevels;
@@ -939,7 +999,9 @@ export function ApiAccessPage() {
       models: preparedDraft.models.filter((model) => model.name.trim()),
     };
     const baseUrlRequired = definition.openAi || definition.section === 'codex-api-key';
-    const remarkRequired = definition.openAi && activeCategory !== 'deepseek';
+    const remarkRequired = definition.openAi
+      && activeCategory !== 'deepseek'
+      && activeCategory !== 'fireworks';
     const parsedApiKeys = parseProviderApiKeys(preparedDraft.apiKey);
     if (
       parsedApiKeys.length === 0

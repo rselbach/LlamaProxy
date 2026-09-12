@@ -4,6 +4,7 @@ export const zhCN = {
   ...easyModeZhCN,
   'apiAccess.provider.codex': 'Codex API',
   'apiAccess.provider.deepseek': 'DeepSeek',
+  'apiAccess.provider.fireworks': 'Fireworks',
   'apiAccess.provider.claude': 'Claude',
   'apiAccess.provider.gemini': 'Gemini',
   'apiAccess.field.baseUrl': 'Base URL',

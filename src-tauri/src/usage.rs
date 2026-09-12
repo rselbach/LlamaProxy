@@ -5211,8 +5211,48 @@ mod tests {
         let prices = load_model_prices(&connection).unwrap();
         assert_eq!(prices["gpt-5.6-terra"].prompt, 2.0);
         assert_eq!(prices["gpt-5.6-terra"].source, "builtin");
+        assert!(prices.contains_key("accounts/fireworks/models/kimi-k3"));
         drop(connection);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bundled_fireworks_prices_use_exact_model_ids_and_cached_input_rates() {
+        // Source: https://docs.fireworks.ai/serverless/pricing, verified 2026-09-12.
+        let direct = official_model_price("deepseek-v4-flash-vision-exp").unwrap();
+        assert_eq!(direct.prompt, 0.44);
+        assert_eq!(direct.completion, 1.32);
+        assert_eq!(direct.cache_read, 0.014);
+
+        let fireworks =
+            official_model_price("accounts/fireworks/models/deepseek-v4-flash-vision-exp").unwrap();
+        assert_eq!(
+            fireworks.model,
+            "accounts/fireworks/models/deepseek-v4-flash-vision-exp"
+        );
+        assert_eq!(fireworks.prompt, 0.22);
+        assert_eq!(fireworks.completion, 0.66);
+        assert_eq!(fireworks.cache_read, 0.007);
+
+        let standard = official_model_price("accounts/fireworks/models/kimi-k3").unwrap();
+        let fast = official_model_price("accounts/fireworks/routers/kimi-k3-fast").unwrap();
+        assert_eq!(
+            (standard.prompt, standard.completion, standard.cache_read),
+            (3.0, 15.0, 0.3)
+        );
+        assert_eq!(
+            (fast.prompt, fast.completion, fast.cache_read),
+            (4.5, 22.5, 0.45)
+        );
+
+        let tokens = CostTokens {
+            input: 1_000_000,
+            output: 1_000_000,
+            cache_read: 200_000,
+            ..CostTokens::default()
+        };
+        let cost = cost_for_price(&standard.model, "default", &tokens, &standard);
+        assert!((cost - 17.46).abs() < 0.000001);
     }
 
     #[test]

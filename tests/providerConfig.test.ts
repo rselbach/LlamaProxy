@@ -8,6 +8,7 @@ import {
   DEEPSEEK_BASE_URL,
   DEEPSEEK_THINKING_LEVELS,
   exclusionsForModelSelection,
+  FIREWORKS_BASE_URL,
   modelSelectionForDiscovery,
   parseProviderHeaders,
   parseProviderApiKeys,
@@ -41,11 +42,12 @@ it('parses multiline API keys into unique trimmed entries', () => {
 });
 
 describe('API 接入配置合并', () => {
-  it('固定使用 Codex、OpenAI、DeepSeek、Claude、Gemini 顺序且不包含 Vertex', () => {
+  it('固定使用 Codex、OpenAI、DeepSeek、Fireworks、Claude、Gemini 顺序且不包含 Vertex', () => {
     expect(providerSectionOrder).toEqual([
       'codex-api-key',
       'openai-compatibility',
       'deepseek',
+      'fireworks',
       'claude-api-key',
       'gemini-api-key',
     ]);
@@ -93,6 +95,74 @@ describe('API 接入配置合并', () => {
     });
   });
 
+  it('Fireworks 新增预设保存为 OpenAI 兼容配置且不注入思考能力', () => {
+    const draft = createProviderDraft('fireworks');
+    const result = buildProviderRecord(
+      'openai-compatibility',
+      applyProviderRemarkIdentity(
+        'fireworks',
+        applyProviderPreset('fireworks', {
+          ...draft,
+          apiKey: 'fireworks-key',
+          remark: '生产 Fireworks',
+          thinkingLevels: [...DEEPSEEK_THINKING_LEVELS],
+          models: [
+            { name: 'accounts/example/models/deepseek-v3' },
+            { name: 'accounts/example/models/llama-v3' },
+          ],
+        }),
+      ),
+    );
+
+    expect(draft).toMatchObject({
+      name: 'Fireworks',
+      remark: '',
+      baseUrl: FIREWORKS_BASE_URL,
+      models: [],
+    });
+    expect(draft.thinkingLevels).toBeUndefined();
+    expect(result).toMatchObject({
+      name: 'Fireworks',
+      'base-url': 'https://api.fireworks.ai/inference/v1',
+      'api-key-entries': [{ 'api-key': 'fireworks-key' }],
+      models: [
+        { name: 'accounts/example/models/deepseek-v3' },
+        { name: 'accounts/example/models/llama-v3' },
+      ],
+    });
+    expect(result.models).not.toContainEqual(expect.objectContaining({ thinking: expect.anything() }));
+  });
+
+  it('编辑 Fireworks 接入时保留名称和扩展字段', () => {
+    const result = buildProviderRecord(
+      'openai-compatibility',
+      applyProviderRemarkIdentity('fireworks', {
+        ...createProviderDraft('fireworks'),
+        apiKey: 'updated-key',
+        baseUrl: FIREWORKS_BASE_URL,
+        models: [{ name: 'accounts/example/models/llama-v3', alias: 'llama' }],
+        headersText: 'X-Team: inference',
+        testModel: 'accounts/example/models/llama-v3',
+      }),
+      {
+        name: 'Fireworks',
+        'base-url': FIREWORKS_BASE_URL,
+        'api-key-entries': [{ 'api-key': 'old-key', 'proxy-url': 'direct' }],
+        models: [{ name: 'accounts/example/models/llama-v3', image: true }],
+        custom: { keep: true },
+      },
+    );
+
+    expect(result).toMatchObject({
+      name: 'Fireworks',
+      'api-key-entries': [{ 'api-key': 'updated-key', 'proxy-url': 'direct' }],
+      models: [{ name: 'accounts/example/models/llama-v3', alias: 'llama', image: true }],
+      headers: { 'X-Team': 'inference' },
+      'test-model': 'accounts/example/models/llama-v3',
+      custom: { keep: true },
+    });
+  });
+
   it('OpenAI 兼容接入使用备注自动生成内核要求的名称', () => {
     const draft = applyProviderRemarkIdentity('openai-compatibility', {
       ...createProviderDraft('openai-compatibility'),
@@ -111,7 +181,50 @@ describe('API 接入配置合并', () => {
     };
 
     expect(providerCategoryMatchesRecord('deepseek', record)).toBe(true);
+    expect(providerCategoryMatchesRecord('fireworks', record)).toBe(false);
     expect(providerCategoryMatchesRecord('openai-compatibility', record)).toBe(false);
+  });
+
+  it('Fireworks 接入单独归类且已知端点优先于名称', () => {
+    const fireworksDeepSeekModel = {
+      name: 'Fireworks deepseek production',
+      'base-url': FIREWORKS_BASE_URL,
+      models: [{ name: 'accounts/example/models/deepseek-v3' }],
+    };
+    const deepSeekNamedFireworks = {
+      name: 'Fireworks',
+      'base-url': 'https://api.deepseek.com/v1',
+    };
+
+    expect(providerCategoryMatchesRecord('fireworks', fireworksDeepSeekModel)).toBe(true);
+    expect(providerCategoryMatchesRecord('deepseek', fireworksDeepSeekModel)).toBe(false);
+    expect(providerCategoryMatchesRecord('openai-compatibility', fireworksDeepSeekModel)).toBe(false);
+    expect(providerCategoryMatchesRecord('deepseek', deepSeekNamedFireworks)).toBe(true);
+    expect(providerCategoryMatchesRecord('fireworks', deepSeekNamedFireworks)).toBe(false);
+  });
+
+  it('供应商主机名匹配不接受相似域名并保留自定义端点名称回退', () => {
+    const fireworksLookalike = {
+      name: 'ordinary relay',
+      'base-url': 'https://api.fireworks.ai.example.com/inference/v1',
+    };
+    const deepSeekLookalike = {
+      name: 'ordinary relay',
+      'base-url': 'https://api.deepseek.com.example.com/v1',
+    };
+    const customDeepSeek = {
+      name: 'team deepseek relay',
+      'base-url': 'https://relay.example.com/v1',
+    };
+    const customFireworks = {
+      name: 'team fireworks relay',
+      'base-url': 'https://relay.example.com/v1',
+    };
+
+    expect(providerCategoryMatchesRecord('openai-compatibility', fireworksLookalike)).toBe(true);
+    expect(providerCategoryMatchesRecord('openai-compatibility', deepSeekLookalike)).toBe(true);
+    expect(providerCategoryMatchesRecord('deepseek', customDeepSeek)).toBe(true);
+    expect(providerCategoryMatchesRecord('fireworks', customFireworks)).toBe(true);
   });
 
   it('OpenAI 兼容接入把选定思考等级写入全部开放模型', () => {
