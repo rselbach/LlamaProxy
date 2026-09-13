@@ -89,7 +89,8 @@ shown on **Home** rather than the default above.
 The standard console provides controls beyond the initial setup:
 
 - **OAuth** manages account logins, credential files, and provider quota
-  queries. Login options include Codex, Claude, Antigravity, Kimi, and xAI.
+  queries. Login options include Codex, Claude, Antigravity, Kimi, xAI, and GitHub
+  Copilot.
 - **API Access** manages Codex, Claude, Gemini, DeepSeek, and other
   OpenAI-compatible providers, including model selection and health checks.
 - **Agent Configuration** manages client settings, manual backups, model
@@ -100,6 +101,28 @@ The standard console provides controls beyond the initial setup:
 
 The interface supports English, Japanese, Simplified Chinese, and Traditional
 Chinese, with light, dark, and system appearance settings.
+
+### Connect GitHub Copilot
+
+Use a GitHub account with Copilot access. Requests consume your plan's usage
+allowance and remain subject to GitHub's model and organization policies.
+
+1. Start the core, then open **OAuth** or **Beginner Mode** → **OAuth Sign-In**.
+2. On the **GitHub Copilot** card, select **Start Sign-In**.
+3. Select **Copy code**, then **Open Link**. Enter the code on GitHub and approve
+   access. Keep the LlamaProxy page open while it checks authorization.
+4. After your account name and model count appear, choose a `copilot/…` model
+   in **Agent Configuration** or your API client.
+
+Use **Refresh models** after changing your Copilot plan or model access.
+LlamaProxy supports one Copilot account at a time. **Replace account** keeps
+using the previous account until the new sign-in succeeds. **Disconnect**
+removes the local credentials and model routes; it does not revoke the GitHub
+OAuth authorization.
+
+Copilot support is built into LlamaProxy. It requires no plugin or separate
+service. See [Copilot routing and limits](docs/copilot.md) for implementation
+and verification details.
 
 ## Protect your credentials and data
 
@@ -124,6 +147,11 @@ for proxy configuration, and `oauth/` for credentials by default. Usage history
 is in `usage-records/usage.db`, and manual client backups are under
 `backups/agents/`. Client configuration changes are written to each client's
 own configuration files, outside the LlamaProxy data directory.
+
+Copilot credentials are stored separately in `copilot-account.json` in the
+runtime data directory, with owner-only file permissions on macOS and Linux.
+Treat this file as a secret when making backups. Short-lived Copilot tokens
+stay in memory and are not written into the core configuration.
 
 Quit the app before copying its runtime data directory for a backup. Treat the
 copy as sensitive: configuration files and client backups can contain keys or

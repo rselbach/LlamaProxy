@@ -7,6 +7,7 @@ mod claude_catalog;
 mod codex_catalog;
 mod codex_sessions;
 mod configuration_watcher;
+mod copilot;
 mod core_config;
 mod core_runtime;
 mod desktop_theme;
@@ -2472,6 +2473,9 @@ fn main() {
                     }
                 };
                 if !adopted_process_ids.is_empty() {
+                    if let Err(error) = copilot::sync_core_config() {
+                        eprintln!("Failed to restore Copilot routes for the adopted core: {error}");
+                    }
                     eprintln!(
                         "Adopted the CPA core running in the current directory: PID {}",
                         adopted_process_ids
@@ -2582,6 +2586,12 @@ fn main() {
             set_core_proxy_url,
             set_core_session_affinity,
             set_core_session_affinity_ttl,
+            copilot::get_copilot_status,
+            copilot::start_copilot_login,
+            copilot::poll_copilot_login,
+            copilot::cancel_copilot_login,
+            copilot::refresh_copilot_models,
+            copilot::disconnect_copilot,
             management_api::start_oauth_login,
             management_api::get_oauth_status,
             management_api::submit_oauth_callback,

@@ -37,6 +37,8 @@ import {
 } from "../services/modelService";
 import { type ThemePreference } from "../theme";
 import { AgentsPage } from "./AgentsPage";
+import { CopilotConnection } from "../components/CopilotConnection";
+import { copilotCommand, isManagedCopilotRecord } from "../services/copilot";
 
 import codexIcon from "../assets/icons/codex.svg";
 import claudeIcon from "../assets/icons/claude.svg";
@@ -113,6 +115,7 @@ export function EasyModePage({
 
   const [loadingSources, setLoadingSources] = useState(true);
   const [authFiles, setAuthFiles] = useState<Record<string, unknown>[]>([]);
+  const [copilotConnected, setCopilotConnected] = useState<boolean | null>(null);
   const [apiCounts, setApiCounts] = useState<Record<ApiSection, number>>({
     "openai-compatibility": 0,
     deepseek: 0,
@@ -187,7 +190,7 @@ export function EasyModePage({
       };
 
       for (const section of apiSectionOptions) {
-        const sourceList = recordsBySection[section.managementSection];
+        const sourceList = recordsBySection[section.managementSection].filter((record) => !isManagedCopilotRecord(record));
         const list = section.id === "deepseek"
           ? sourceList.filter(isDeepSeekRecord)
           : section.id === "openai-compatibility"
@@ -204,8 +207,13 @@ export function EasyModePage({
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void copilotCommand("get_copilot_status").then((status) => {
+      if (active) setCopilotConnected((current) => current ?? (status.login !== null));
+    }).catch((error: unknown) => console.warn("Failed to read Copilot connection status", error));
     void refreshSourceStatus();
     return () => {
+      active = false;
       ++oauthGeneration.current;
       if (oauthPollTimer.current !== null) window.clearTimeout(oauthPollTimer.current);
     };
@@ -219,11 +227,14 @@ export function EasyModePage({
     });
   };
 
-  const totalLoggedInOAuth = oauthProviders.filter((p) => isOAuthLoggedIn(p.id)).length;
+  const totalLoggedInOAuth = oauthProviders.filter((p) => isOAuthLoggedIn(p.id)).length + Number(copilotConnected);
   const totalApiProviders = Object.values(apiCounts).reduce((a, b) => a + b, 0);
   const hasConnectedSource = totalLoggedInOAuth > 0 || totalApiProviders > 0;
   const connectedSourceCount = totalLoggedInOAuth + totalApiProviders;
   const guideConnectedSourceCount = Math.max(connectedSourceCount, guideOAuthCompleted || guideApiSaved ? 1 : 0);
+  const guideOAuthSuccessProvider = guideOAuthCompleted && guideOAuthProvider
+    ? oauthProviders.find((provider) => provider.id === guideOAuthProvider)?.name ?? ""
+    : copilotConnected ? t("copilot.title") : "";
   const setupStepStatus = t("easyMode.steps.current", {
     current: activeStep,
     total: 2,
@@ -543,6 +554,7 @@ export function EasyModePage({
     guideAgentConfigured,
     guideApiSaved,
     guideOAuthCompleted,
+    guideOAuthSuccessProvider,
     guideStep,
     spotlightRect,
   ]);
@@ -551,7 +563,7 @@ export function EasyModePage({
     ? guideChoice !== null
     : guideStep === 2
       ? authMethod === "oauth"
-        ? guideOAuthProvider !== null && guideOAuthCompleted
+        ? Boolean(guideOAuthSuccessProvider)
         : guideApiSaved
       : guideStep === 3
         ? hasConnectedSource || guideOAuthCompleted || guideApiSaved
@@ -824,6 +836,7 @@ export function EasyModePage({
             >
               <InlineNotice key={oauthFeedback.revision} notice={oauthFeedback.notice} onDismiss={clearOAuthNotice} />
               <div className="simple-mode-provider-grid">
+                <CopilotConnection onConnectedChange={setCopilotConnected} />
                 {oauthProviders.map((provider) => {
                   const loggedIn = isOAuthLoggedIn(provider.id);
                   const isLogging = oauthLoggingIn === provider.id;
@@ -1120,8 +1133,8 @@ export function EasyModePage({
                   {t("easyMode.guide.oauthCompletion", { signedIn: t("easyMode.oauth.loggedIn") })}
                 </p>
                 <div className="guide-tooltip-tip">
-                  {guideOAuthCompleted && guideOAuthProvider ? (
-                    <strong>{t("easyMode.guide.cardStep2OAuthSuccessTip", { provider: oauthProviders.find((provider) => provider.id === guideOAuthProvider)?.name ?? "" })}</strong>
+                  {guideOAuthSuccessProvider ? (
+                    <strong>{t("easyMode.guide.cardStep2OAuthSuccessTip", { provider: guideOAuthSuccessProvider })}</strong>
                   ) : (
                     t("easyMode.guide.cardStep2OAuthWaitTip")
                   )}

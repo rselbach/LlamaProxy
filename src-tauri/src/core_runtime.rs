@@ -1471,6 +1471,7 @@ pub(crate) fn start_core_process_inner(
     }
 
     let config_path = merge_core_config_for_start(&install_dir, gui_config)?;
+    crate::copilot::sync_core_config()?;
     let config_path = path_to_string(&config_path);
     let log_path = core_start_log_path(&install_dir, &gui_config.auth_dir);
     let start_once = || {

@@ -1,4 +1,5 @@
 import { useConfirmation } from '../components/ConfirmationDialog';
+import { isManagedCopilotRecord } from '../services/copilot';
 import {
   type CSSProperties,
   FormEvent,
@@ -309,6 +310,7 @@ export const providerCategoryMatchesRecord = (
   category: ProviderCategory,
   record: Record<string, unknown>,
 ) => {
+  if (isManagedCopilotRecord(record)) return false;
   const presetCategory = providerPresetCategoryForRecord(record);
   if (category === 'deepseek' || category === 'fireworks') {
     return presetCategory === category;
@@ -1231,7 +1233,7 @@ export function ApiAccessPage() {
     void reorderProviders(source, target);
   };
 
-  const totalCount = Object.values(records).reduce((sum, items) => sum + items.length, 0);
+  const totalCount = Object.values(records).reduce((sum, items) => sum + items.filter((record) => !isManagedCopilotRecord(record)).length, 0);
 
   const countForDefinition = (definition: ProviderDefinition) =>
     records[definition.section].filter((record) =>

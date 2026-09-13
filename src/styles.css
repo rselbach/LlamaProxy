@@ -9211,7 +9211,8 @@ body.table-col-resizing * {
 }
 
 .app-confirm-backdrop {
-  z-index: 160;
+  /* Confirmations must remain above the Beginner Mode guide. */
+  z-index: 9010;
   padding: 20px;
 }
 
