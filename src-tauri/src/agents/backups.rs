@@ -4,7 +4,10 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod restore;
-pub(crate) use restore::*;
+use restore::desktop_profile_needs_mapping;
+#[cfg(test)]
+pub(crate) use restore::{execute_restore_plan, prepare_restore_plan};
+pub(crate) use restore::{preview_agent_config_backup, restore_agent_config_backup};
 
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -470,7 +473,9 @@ pub(crate) fn current_desktop_mappings(home: &Path) -> Option<ClaudeDesktopModel
 
 pub(crate) fn mapping_revision(client: &str, paths: &[PathBuf]) -> Result<String, String> {
     if client == "deepseek-harness" {
-        return Ok(image_hash(read_agent_bytes(&deepseek_harness_catalog_state_path(paths)?)?.as_deref()));
+        return Ok(image_hash(
+            read_agent_bytes(&deepseek_harness_catalog_state_path(paths)?)?.as_deref(),
+        ));
     }
     if client != "claude-desktop" {
         return Ok(String::new());

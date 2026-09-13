@@ -89,7 +89,7 @@ credentials. Inference errors preserve the upstream HTTP status and numeric
 - `api.rs` owns the GitHub and Copilot wire formats and validation.
 - `config.rs` owns the managed core entries and alias policy.
 - `transport.rs` owns the constrained, authenticated HTTP adapter and streaming.
-- `src/components/CopilotConnection.tsx` is shared by OAuth and Beginner Mode.
+- `src/components/CopilotConnection.tsx` provides the GitHub Copilot card on the OAuth page.
 
 A core fork would couple the feature to every core update. A shared-library
 plugin would require platform-specific builds and a separate plugin lifecycle.

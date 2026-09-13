@@ -37,14 +37,8 @@ const assert = require('node:assert/strict');
       await nativeReady();
       await theme('dark');
       assert.equal(await stored(), 'system');
-      await page.locator('.sidebar-easy-entry').click();
-      const easy = page.locator('.simple-mode-theme-group');
-      assert.equal(await easy.getByRole('button').count(), 3);
-      assert.equal(await easy.getByRole('button').nth(2).getAttribute('aria-pressed'), 'true');
-      await easy.getByRole('button').nth(0).click();
+      await select(0);
       await theme('light');
-      await page.locator('.simple-mode-exit-btn').click();
-      assert.equal(await sidebar().getByRole('button').nth(0).getAttribute('aria-pressed'), 'true');
       const writes = await page.evaluate(() => window.themeFixture.calls.filter(call => call.cmd === 'plugin:window|set_theme').length);
       assert.ok(writes < 30, `${platform}: native theme echo loop (${writes} writes)`);
     }
@@ -78,7 +72,7 @@ const assert = require('node:assert/strict');
       }
     }
     assert.deepEqual(errors, []);
-    console.log('Theme UI passed: Windows/macOS/Linux IPC, browser media, persistence, both selectors, 4 locales at 2 widths.');
+    console.log('Theme UI passed: Windows/macOS/Linux IPC, browser media, persistence, sidebar selector, 4 locales at 2 widths.');
   } finally {
     await browser.close();
   }

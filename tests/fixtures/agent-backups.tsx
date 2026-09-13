@@ -22,9 +22,7 @@ const harnessModels=[
 ];
 const harnessSnapshot=()=>({revision:String(harnessRevision),provider:harnessProvider,baseUrl:'http://127.0.0.1:8317/v1',defaultModel:currentModel,configured:!!currentModel,models:harnessModels.map(m=>({...m,configuration:harnessConfigurations[m.id]??{}}))});
 let harnessStatus={running:params.has('running'),pid:params.has('running')?100:null as number|null,mode:params.has('running')?params.get('harness-mode')||'web':null as string|null};
-let appliedCount=0;
 const calls:any[]=[];(window as any).fixtureCalls=calls;
-let embedded=params.has('embedded');
 (window as any).fixtureSessionIds=Array.from({length:61},(_,index)=>`session-${index+1}`);
 mockIPC(async (cmd,args:any) => {
  calls.push({cmd,args});
@@ -89,6 +87,6 @@ mockIPC(async (cmd,args:any) => {
  throw new Error('Unhandled fixture command: '+cmd);
 });
 let root=createRoot(document.getElementById('root')!);
-const render=()=>root.render(<I18nProvider><AgentsPage embedded={embedded} onConfigurationApplied={()=>{document.documentElement.dataset.fixtureApplied=String(++appliedCount);}}/></I18nProvider>);
-(window as any).fixtureRemount=(nextEmbedded=embedded)=>{embedded=nextEmbedded;root.unmount();root=createRoot(document.getElementById('root')!);render();};
+const render=()=>root.render(<I18nProvider><AgentsPage/></I18nProvider>);
+(window as any).fixtureRemount=()=>{root.unmount();root=createRoot(document.getElementById('root')!);render();};
 render();

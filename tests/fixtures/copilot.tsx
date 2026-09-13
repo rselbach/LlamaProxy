@@ -1,7 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import { CopilotConnection } from '../../src/components/CopilotConnection';
-import { EasyModePage } from '../../src/pages/EasyModePage';
 import type { CopilotStatus } from '../../src/services/copilot';
 import { I18nProvider } from '../../src/i18n';
 import '../../src/styles.css';
@@ -11,7 +10,6 @@ declare global {
     copilotFixture: {
       calls: { command: string; args: unknown }[];
       completePoll: (() => void) | null;
-      completeInitial: (() => void) | null;
     };
   }
 }
@@ -19,8 +17,7 @@ declare global {
 const params = new URLSearchParams(location.search);
 localStorage.setItem('easy-cli-proxy-api.locale', params.get('locale') ?? 'en');
 document.documentElement.dataset.theme = params.get('theme') ?? 'light';
-window.copilotFixture = { calls: [], completePoll: null, completeInitial: null };
-let statusReads = 0;
+window.copilotFixture = { calls: [], completePoll: null };
 let status: CopilotStatus = { login: null, models: [], pending: null };
 const connected: CopilotStatus = { login: 'troy-barnes', models: ['copilot/greendale'], pending: null };
 mockIPC(async (command, args) => {
@@ -28,14 +25,7 @@ mockIPC(async (command, args) => {
   switch (command) {
     case 'set_app_locale':
     case 'open_oauth_url': return null;
-    case 'management_request': return {};
     case 'get_copilot_status':
-      ++statusReads;
-      if (params.has('defer-initial') && statusReads === 2) {
-        return new Promise<CopilotStatus>((resolve) => {
-          window.copilotFixture.completeInitial = () => resolve({ login: null, models: [], pending: null });
-        });
-      }
       return status;
     case 'start_copilot_login':
       status = { ...status, pending: { userCode: 'TROY-ABED', url: 'https://github.com/login/device', expiresIn: 900 } };
@@ -62,8 +52,6 @@ const root = document.getElementById('root');
 if (!root) throw new Error('Fixture root is missing');
 createRoot(root).render(
   <I18nProvider>
-    {params.has('easy') ? <EasyModePage /> : (
-      <main className="page management-page"><div className="oauth-grid"><CopilotConnection /></div></main>
-    )}
+    <main className="page management-page"><div className="oauth-grid"><CopilotConnection /></div></main>
   </I18nProvider>,
 );

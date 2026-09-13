@@ -4,14 +4,16 @@ import { providerCategoryMatchesRecord, sectionRecordsFromConfig } from '../src/
 
 describe('Copilot connection boundary', () => {
   test('parses disconnected, pending, and connected states without retaining secrets', () => {
-    expect(parseCopilotStatus({ login: null, models: [], pending: null })).toEqual({ login: null, models: [], pending: null });
+    expect(parseCopilotStatus({ login: null, models: [], pending: null })).toEqual({ login: null, models: [], disabledModels: [], pending: null });
     const pending = { userCode: 'TROY-ABED', url: 'https://github.com/login/device', expiresIn: 900 };
-    expect(parseCopilotStatus({ login: null, models: [], pending, accessToken: 'private-token' })).toEqual({ login: null, models: [], pending });
+    expect(parseCopilotStatus({ login: null, models: [], pending, accessToken: 'private-token' })).toEqual({ login: null, models: [], disabledModels: [], pending });
     expect(parseCopilotStatus({ login: 'troy-barnes', models: ['copilot/greendale'], pending: null }).login).toBe('troy-barnes');
+    expect(parseCopilotStatus({ login: 'troy-barnes', models: ['copilot/greendale'], disabledModels: ['copilot/greendale'], pending: null }).disabledModels).toEqual(['copilot/greendale']);
   });
 
   test('rejects malformed IPC and arbitrary verification URLs', () => {
     for (const value of [null, {}, { login: false, models: [], pending: null },
+      { login: null, models: [], disabledModels: [12], pending: null },
       { login: null, models: [12], pending: null }, { login: null, models: [] },
       { login: null, models: [], pending: { userCode: 'TROY-ABED', url: 'https://example.com', expiresIn: 900 } },
       { login: null, models: [], pending: { userCode: 'TROY-ABED', url: 'https://github.com/login/device', expiresIn: NaN } }]) {

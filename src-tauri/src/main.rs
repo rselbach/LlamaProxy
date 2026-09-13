@@ -2591,6 +2591,7 @@ fn main() {
             copilot::poll_copilot_login,
             copilot::cancel_copilot_login,
             copilot::refresh_copilot_models,
+            copilot::set_copilot_model_enabled,
             copilot::disconnect_copilot,
             management_api::start_oauth_login,
             management_api::get_oauth_status,

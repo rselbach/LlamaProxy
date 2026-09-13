@@ -121,6 +121,7 @@ fn account_storage_is_private_atomic_and_cleared_on_disconnect() {
         access_token: "test-github-secret".into(),
         refresh_token: None,
         expires_at: None,
+        disabled_models: Vec::new(),
         models: vec![model("troy", Endpoint::Chat)],
     };
     save_account(&path, Some(&account)).unwrap();
@@ -140,6 +141,103 @@ fn account_storage_is_private_atomic_and_cleared_on_disconnect() {
         .contains("test-github-secret"));
     assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn model_choices_survive_reload_and_catalog_refresh() {
+    let root = std::env::temp_dir().join(format!("llamaproxy-models-{}", random_key().unwrap()));
+    fs::create_dir(&root).unwrap();
+    let mut account: Account = serde_json::from_value(json!({
+        "login": "troy-barnes", "access_token": "test-token",
+        "refresh_token": null, "expires_at": null,
+        "models": [{"id": "troy", "endpoint": "chat"}]
+    }))
+    .unwrap();
+    assert!(account.disabled_models.is_empty());
+    account.models = vec![
+        model("troy", Endpoint::Chat),
+        model("abed", Endpoint::Responses),
+    ];
+    account.set_model_enabled("copilot/troy", false).unwrap();
+    account.set_model_enabled("copilot/troy", false).unwrap();
+    assert_eq!(account.disabled_models, vec!["troy"]);
+    assert!(account.set_model_enabled("copilot/unknown", false).is_err());
+    assert!(account.set_model_enabled("troy", false).is_err());
+
+    let mut service = service(
+        Api::new().unwrap(),
+        State {
+            account: None,
+            token: None,
+            login: None,
+        },
+    );
+    service.path = root.join("account.json");
+    service.config_path = root.join("config.yaml");
+    fs::write(&service.config_path, "port: 11432\n").unwrap();
+    let mut state = service.state.lock().await;
+    service.commit(&mut state, Some(account)).unwrap();
+    assert_eq!(
+        *service.models.read().unwrap(),
+        vec![model("abed", Endpoint::Responses)]
+    );
+    assert_eq!(service.status(&state).models.len(), 2);
+    assert_eq!(service.status(&state).disabled_models, vec!["copilot/troy"]);
+    assert!(!fs::read_to_string(&service.config_path)
+        .unwrap()
+        .contains("copilot/troy"));
+
+    let mut reloaded = load_account(&service.path).unwrap().unwrap();
+    reloaded.models.push(model("annie", Endpoint::Messages));
+    service.commit(&mut state, Some(reloaded.clone())).unwrap();
+    assert_eq!(service.models.read().unwrap().len(), 2);
+    assert!(!fs::read_to_string(&service.config_path)
+        .unwrap()
+        .contains("copilot/troy"));
+    reloaded.set_model_enabled("copilot/troy", true).unwrap();
+    service.commit(&mut state, Some(reloaded)).unwrap();
+    assert_eq!(service.models.read().unwrap().len(), 3);
+    assert!(fs::read_to_string(&service.config_path)
+        .unwrap()
+        .contains("copilot/troy"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn disabling_last_route_preserves_valid_yaml_for_indentless_lists() {
+    let source = "# Greendale routes\nopenai-compatibility:\n- name: GitHub Copilot\n  base-url: http://127.0.0.1:4321/llamaproxy-copilot\n  models:\n  - name: troy\n    alias: copilot/troy\nport: 11432\n";
+    let cleared = crate::patch_core_yaml_document(source, |document| {
+        config::configure(
+            document,
+            "http://127.0.0.1:4321/llamaproxy-copilot",
+            "key",
+            &[],
+        )
+    })
+    .unwrap()
+    .unwrap();
+    assert!(cleared.contains("# Greendale routes"));
+    let parsed: serde_norway::Value = serde_norway::from_str(&cleared).unwrap();
+    assert!(parsed["openai-compatibility"]
+        .as_sequence()
+        .unwrap()
+        .is_empty());
+    let restored = crate::patch_core_yaml_document(&cleared, |document| {
+        config::configure(
+            document,
+            "http://127.0.0.1:4321/llamaproxy-copilot",
+            "key",
+            &[model("troy", Endpoint::Chat)],
+        )
+    })
+    .unwrap()
+    .unwrap();
+    let parsed: serde_norway::Value = serde_norway::from_str(&restored).unwrap();
+    assert_eq!(
+        parsed["openai-compatibility"][0]["models"][0]["alias"],
+        "copilot/troy"
+    );
+    assert_eq!(parsed["port"], 11432);
 }
 
 // Real loopback HTTP fixtures: production reqwest encoding/decoding is exercised.
@@ -208,7 +306,7 @@ pub(super) fn service(api: Api, state: State) -> Copilot {
     let models = state
         .account
         .as_ref()
-        .map(|a| a.models.clone())
+        .map(Account::enabled_models)
         .unwrap_or_default();
     let cancel = state
         .login
@@ -301,6 +399,7 @@ fn public_status_never_serializes_private_credentials() {
         access_token: "private-github-token".into(),
         refresh_token: Some("private-refresh-token".into()),
         expires_at: None,
+        disabled_models: Vec::new(),
         models: vec![model("troy", Endpoint::Chat)],
     });
     let service = service(Api::new().unwrap(), state);

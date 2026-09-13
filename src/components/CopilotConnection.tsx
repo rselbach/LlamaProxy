@@ -5,9 +5,8 @@ import { Bot, Copy, ExternalLink, LoaderCircle, LogIn, RefreshCw } from 'lucide-
 import { useI18n } from '../i18n';
 import { copilotCommand, type CopilotCommand, type CopilotStatus } from '../services/copilot';
 
-export function CopilotConnection({ browser = 'default', onConnectedChange }: {
+export function CopilotConnection({ browser = 'default' }: {
   browser?: string;
-  onConnectedChange?: (connected: boolean) => void;
 }) {
   const { t } = useI18n();
   const { askConfirmation, confirmationDialog } = useConfirmation();
@@ -27,10 +26,6 @@ export function CopilotConnection({ browser = 'default', onConnectedChange }: {
     });
     return () => { mounted.current = false; ++generation.current; };
   }, []);
-
-  useEffect(() => {
-    if (status !== null) onConnectedChange?.(status.login !== null);
-  }, [status?.login, onConnectedChange]);
 
   const deviceCode = status?.pending?.userCode;
   useEffect(() => {

@@ -806,12 +806,32 @@ pub(crate) fn replace_yaml_sequence_value(
     })?;
     let range = sequence.byte_range();
     let start = range.start as usize;
-    let end = range.end as usize;
+    let mut end = range.end as usize;
     let line_start = content[..start]
         .rfind('\n')
         .map(|index| index + 1)
         .unwrap_or(0);
     let prefix = &content[line_start..start];
+    if prefix.trim().is_empty() {
+        // yaml-edit can include the next mapping entry in an indentless
+        // sequence's range. Keep that sibling outside the replacement.
+        let mut offset = start;
+        for (index, line) in content[start..end].split_inclusive('\n').enumerate() {
+            let trimmed = line.trim_start();
+            let indent = line.len() - trimmed.len();
+            if index > 0
+                && !trimmed.is_empty()
+                && !trimmed.starts_with('#')
+                && indent <= prefix.len()
+                && !trimmed.starts_with("- ")
+                && trimmed.trim_end() != "-"
+            {
+                end = offset;
+                break;
+            }
+            offset += line.len();
+        }
+    }
     let original = &content[start..end];
     let trimmed_end = original.trim_end_matches(char::is_whitespace).len();
     let trailing = &original[trimmed_end..];
@@ -820,7 +840,15 @@ pub(crate) fn replace_yaml_sequence_value(
         let serialized = serde_norway::to_string(value)
             .map_err(|err| format!("Failed to serialize core configuration sequence: {err}"))?;
         let serialized = serialized.trim_end_matches(['\r', '\n']);
+        // An indentless block sequence is valid, but an empty flow sequence
+        // must be indented beneath its mapping key.
+        let empty_indent = if value.as_sequence().is_some_and(Vec::is_empty) {
+            "  "
+        } else {
+            ""
+        };
         let mut indented = String::with_capacity(serialized.len() + prefix.len() * 2);
+        indented.push_str(empty_indent);
         for (index, line) in serialized.split('\n').enumerate() {
             if index > 0 {
                 indented.push('\n');

@@ -55,6 +55,32 @@ struct Account {
     refresh_token: Option<String>,
     expires_at: Option<u64>,
     models: Vec<Model>,
+    #[serde(default)]
+    disabled_models: Vec<String>,
+}
+
+impl Account {
+    fn enabled_models(&self) -> Vec<Model> {
+        self.models
+            .iter()
+            .filter(|model| !self.disabled_models.contains(&model.id))
+            .cloned()
+            .collect()
+    }
+
+    fn set_model_enabled(&mut self, model: &str, enabled: bool) -> Result<(), String> {
+        let id = model
+            .strip_prefix("copilot/")
+            .ok_or_else(|| "Invalid Copilot model identifier".to_string())?;
+        if !self.models.iter().any(|candidate| candidate.id == id) {
+            return Err("The Copilot model is no longer available; refresh the catalog".into());
+        }
+        self.disabled_models.retain(|disabled| disabled != id);
+        if !enabled {
+            self.disabled_models.push(id.to_string());
+        }
+        Ok(())
+    }
 }
 
 struct Login {
@@ -87,6 +113,7 @@ struct Copilot {
 pub(crate) struct CopilotStatus {
     login: Option<String>,
     models: Vec<String>,
+    disabled_models: Vec<String>,
     pending: Option<PendingLogin>,
 }
 
@@ -109,7 +136,7 @@ fn runtime() -> Result<Arc<Copilot>, String> {
     let account = load_account(&path)?;
     let models = account
         .as_ref()
-        .map(|a| a.models.clone())
+        .map(Account::enabled_models)
         .unwrap_or_default();
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .map_err(|e| format!("Could not start the private Copilot adapter: {e}"))?;
@@ -171,6 +198,17 @@ impl Copilot {
                         .collect()
                 })
                 .unwrap_or_default(),
+            disabled_models: state
+                .account
+                .as_ref()
+                .map(|account| {
+                    account
+                        .disabled_models
+                        .iter()
+                        .map(|id| format!("copilot/{id}"))
+                        .collect()
+                })
+                .unwrap_or_default(),
             pending: state.login.as_ref().map(|login| PendingLogin {
                 user_code: login.device.user_code.clone(),
                 url: login.device.verification_uri.clone(),
@@ -185,7 +223,7 @@ impl Copilot {
     fn commit(&self, state: &mut State, account: Option<Account>) -> Result<(), String> {
         let models = account
             .as_ref()
-            .map(|a| a.models.clone())
+            .map(Account::enabled_models)
             .unwrap_or_default();
         let mut published = self
             .models
@@ -316,6 +354,7 @@ impl Copilot {
                 refresh_token: token.refresh_token,
                 expires_at,
                 models,
+                disabled_models: Vec::new(),
             }),
         )?;
         state.token = Some(copilot_token);
@@ -390,6 +429,22 @@ pub(crate) async fn refresh_copilot_models() -> Result<CopilotStatus, String> {
     account.models = models;
     service.commit(&mut state, Some(account))?;
     state.token = Some(token);
+    Ok(service.status(&state))
+}
+
+#[tauri::command]
+pub(crate) async fn set_copilot_model_enabled(
+    model: String,
+    enabled: bool,
+) -> Result<CopilotStatus, String> {
+    let service = runtime()?;
+    let mut state = service.state.lock().await;
+    let mut account = state
+        .account
+        .clone()
+        .ok_or_else(|| "Sign in to GitHub Copilot first".to_string())?;
+    account.set_model_enabled(&model, enabled)?;
+    service.commit(&mut state, Some(account))?;
     Ok(service.status(&state))
 }
 

@@ -94,6 +94,7 @@ async fn copilot_core_routes_and_translates_all_three_protocols() {
                 access_token: "github-test-token".into(),
                 refresh_token: None,
                 expires_at: None,
+                disabled_models: Vec::new(),
                 models: models.clone(),
             }),
             token: Some(Token {
@@ -173,6 +174,51 @@ async fn copilot_core_routes_and_translates_all_three_protocols() {
         assert!(!ids.contains(&model), "{catalog}");
     }
 
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !fs::read_to_string(root.join("core.log"))
+        .unwrap()
+        .contains("file watcher started")
+    {
+        assert!(Instant::now() < deadline, "Core file watcher did not start");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    for enabled in [false, true] {
+        let selected = if enabled { &models[..] } else { &models[1..] };
+        config::write(&path, &url, "local-test-key", selected).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let catalog: Value = client
+                .get(format!("{base}/v1/models"))
+                .bearer_auth("client-test-key")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let available = catalog["data"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|model| model["id"] == "copilot/troy");
+            if available == enabled {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Model availability did not update: {catalog}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        if !enabled {
+            let response = client.post(format!("{base}/v1/chat/completions"))
+                .bearer_auth("client-test-key")
+                .json(&json!({"model":"copilot/troy", "messages":[{"role":"user","content":"Greendale"}]}))
+                .send().await.unwrap();
+            assert!(!response.status().is_success());
+        }
+    }
+
     for stream in [false, true] {
         for (path, body) in [
             (
@@ -230,6 +276,7 @@ async fn copilot_core_routes_and_translates_all_three_protocols() {
                 access_token: "github-test-token".into(),
                 refresh_token: None,
                 expires_at: None,
+                disabled_models: Vec::new(),
                 models: models.clone(),
             }),
             token: Some(Token {

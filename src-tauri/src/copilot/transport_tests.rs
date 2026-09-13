@@ -75,6 +75,7 @@ async fn adapter(
                 access_token: "github-test-token".into(),
                 refresh_token: None,
                 expires_at: None,
+                disabled_models: Vec::new(),
                 models: vec![Model {
                     id: "troy".into(),
                     endpoint,

@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 export type CopilotStatus = {
   login: string | null;
   models: string[];
+  disabledModels: string[];
   pending: { userCode: string; url: string; expiresIn: number } | null;
 };
 
@@ -30,11 +31,20 @@ export function parseCopilotStatus(value: unknown): CopilotStatus {
     }
     pending = { userCode: login.userCode, url: login.url, expiresIn: login.expiresIn };
   }
-  return { login: value.login, models: value.models, pending };
+  const disabledModels = 'disabledModels' in value ? value.disabledModels : [];
+  if (!Array.isArray(disabledModels)
+    || !disabledModels.every((model): model is string => typeof model === 'string')) {
+    throw new Error('Invalid disabled Copilot models');
+  }
+  return { login: value.login, models: value.models, disabledModels, pending };
 }
 
 export async function copilotCommand(command: CopilotCommand): Promise<CopilotStatus> {
   return parseCopilotStatus(await invoke<unknown>(command));
+}
+
+export async function setCopilotModelEnabled(model: string, enabled: boolean): Promise<CopilotStatus> {
+  return parseCopilotStatus(await invoke<unknown>('set_copilot_model_enabled', { model, enabled }));
 }
 
 export function isManagedCopilotRecord(record: Record<string, unknown>): boolean {

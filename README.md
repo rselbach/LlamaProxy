@@ -47,10 +47,10 @@ Agent, DeepSeek Harness, ZCode, Kimi Code, Grok Build, and Pi.
 2. In **Advanced Settings**, replace the default `123456` key under
    **Authentication Keys** with a strong key. This is the key your clients use
    to reach the proxy, not a provider API key.
-3. Open **Beginner Mode** and connect a provider. Use **OAuth Sign-In** for an
+3. Connect a provider. Use **OAuth** for an
    account login, or **API Access** for a provider URL and API key. For API
    access, fetch the models, select at least one, and save the connection.
-4. Select an installed client and a model. Before changing an existing client
+4. Open **Agent Configuration** and select an installed client and a model. Before changing an existing client
    configuration, use **Manual Backup** in **Agent Configuration** to save the
    files on disk. Configuration operations can replace custom settings and do
    not create automatic backups.
@@ -107,7 +107,7 @@ Chinese, with light, dark, and system appearance settings.
 Use a GitHub account with Copilot access. Requests consume your plan's usage
 allowance and remain subject to GitHub's model and organization policies.
 
-1. Start the core, then open **OAuth** or **Beginner Mode** → **OAuth Sign-In**.
+1. Start the core, then open **OAuth**.
 2. On the **GitHub Copilot** card, select **Start Sign-In**.
 3. Select **Copy code**, then **Open Link**. Enter the code on GitHub and approve
    access. Keep the LlamaProxy page open while it checks authorization.

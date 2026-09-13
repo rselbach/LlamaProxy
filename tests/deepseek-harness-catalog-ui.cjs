@@ -20,8 +20,8 @@ const path = require('node:path');
     await dialog().getByRole('status').filter({ hasText: /已保存/ }).waitFor();
   };
   try {
-    for (const mode of ['', 'embedded&']) {
-      await open(mode);
+    {
+      await open();
       const context = () => dialog().getByRole('spinbutton', { name: '上下文窗口（tokens）' });
       assert.equal(await context().inputValue(), '128000');
       await dialog().getByText('来源：内核模型目录 / 模型 API', { exact: true }).waitFor();

@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
     const open = async query => { await page.goto('http://localhost:1421/tests/fixtures/agent-backups.html?' + query); await page.getByRole('tab', { name: '基础配置', exact: true }).waitFor(); };
     const backup = async () => { await manage(); await page.getByRole('button', { name: '手动备份', exact: true }).click(); await page.getByText('已手动备份当前磁盘配置，未包含未保存的表单修改。', { exact: true }).waitFor(); };
     const choose = async () => { await manage(); await page.getByRole('button', { name: '恢复备份', exact: true }).click(); await page.locator('.agent-backup-columns nav button').first().click(); };
-    for (const query of ['fresh', 'embedded&fresh']) {
+    for (const query of ['fresh']) {
       await open(query);
       await page.getByRole('button', { name: '一键接入', exact: true }).click();
       await page.getByText('配置已更新。', { exact: true }).waitFor();
@@ -67,7 +67,7 @@ const assert = require('node:assert/strict');
     await open('client=claude-desktop');
     await page.getByText('没有可靠的 Claude Desktop 模型映射，请重新选择模型。', { exact: true }).waitFor();
     assert.ok(await page.getByRole('button', { name: '更新配置', exact: true }).isDisabled());
-    for (const query of ['client=pi', 'embedded&client=pi']) {
+    for (const query of ['client=pi']) {
       await page.goto('http://localhost:1421/tests/fixtures/agent-backups.html?' + query);
       await page.getByRole('button', { name: '更新配置', exact: true }).waitFor();
       await manage();
@@ -76,6 +76,6 @@ const assert = require('node:assert/strict');
       }
     }
     assert.deepEqual(errors, []);
-    console.log('PASS: full/compact backup, no Pi backup/template controls, disk-only payload, template preview, restore/delete confirmations, corrupt backups, conflict invalidation, narrow layout, missing Desktop mapping');
+    console.log('PASS: backup, no Pi backup/template controls, disk-only payload, template preview, restore/delete confirmations, corrupt backups, conflict invalidation, narrow layout, missing Desktop mapping');
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

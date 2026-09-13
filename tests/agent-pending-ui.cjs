@@ -46,7 +46,7 @@ const assert = require('node:assert/strict');
     }
 
     // Model edits, reversions, backups, apply and component remounts.
-    for (const query of ['fresh', 'embedded&fresh', 'client=pi', 'embedded&client=pi']) {
+    for (const query of ['fresh', 'client=pi']) {
       await open(query);
       const original = await page.locator('.agent-model-trigger strong').first().textContent();
       const changed = original === 'gpt-one' ? 'gpt-two' : 'gpt-one';

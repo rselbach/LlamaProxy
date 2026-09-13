@@ -47,23 +47,8 @@ const assert = require('node:assert/strict');
     await start();
     await page.getByRole('alert').filter({ hasText: 'GitHub authorization was denied' }).waitFor();
     await button('Start Sign-In').waitFor();
-    await open('easy&defer-initial');
-    await button('Interactive Guide').click();
-    await page.locator('button.simple-mode-choice').filter({ hasText: 'OAuth Sign-In' }).click();
-    const nextGuideStep = page.locator('.guide-interactive-card').getByRole('button', { name: 'Next', exact: true });
-    await nextGuideStep.click();
-    assert.equal(await nextGuideStep.isDisabled(), true);
-    await start();
-    await page.getByText('1 Copilot models available.', { exact: true }).waitFor();
-    await page.waitForFunction(() => !document.querySelector('.guide-interactive-card .primary-button').disabled);
-    await page.evaluate(() => window.copilotFixture.completeInitial());
-    await page.waitForTimeout(100);
-    assert.equal(await nextGuideStep.isDisabled(), false);
-    await button('Disconnect').click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Disconnect', exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('.guide-interactive-card .primary-button').disabled);
     assert.deepEqual(errors, []);
-    console.log('Copilot UI: device login, URL opening, polling, refresh, confirmed disconnect, cancellation, denial, and Beginner Mode guide passed.');
+    console.log('Copilot UI: device login, URL opening, polling, refresh, confirmed disconnect, cancellation, and denial passed.');
   } finally {
     await browser.close();
   }

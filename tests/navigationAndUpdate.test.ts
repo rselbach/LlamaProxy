@@ -3,14 +3,12 @@ import { appUpdateIndicatorState } from '../src/appUpdateModel';
 import { canOpenAppPage, isAlwaysAvailablePage } from '../src/navigation';
 import { oauthSubpages } from '../src/oauthNavigation';
 
-describe('简易模式、首页、配置与版本管理导航', () => {
-  test('内核停止时简易模式、首页、配置和版本管理始终可进入', () => {
-    expect(isAlwaysAvailablePage('easy')).toBe(true);
+describe('首页、配置与版本管理导航', () => {
+  test('内核停止时首页、配置和版本管理始终可进入', () => {
     expect(isAlwaysAvailablePage('home')).toBe(true);
     expect(isAlwaysAvailablePage('versions')).toBe(true);
     expect(isAlwaysAvailablePage('config')).toBe(true);
     expect(isAlwaysAvailablePage('usage-records')).toBe(true);
-    expect(canOpenAppPage('easy', false)).toBe(true);
     expect(canOpenAppPage('home', false)).toBe(true);
     expect(canOpenAppPage('versions', false)).toBe(true);
     expect(canOpenAppPage('config', false)).toBe(true);
@@ -21,6 +19,8 @@ describe('简易模式、首页、配置与版本管理导航', () => {
   test('内核运行后解锁其他功能页', () => {
     expect(canOpenAppPage('config', true)).toBe(true);
     expect(canOpenAppPage('agents', true)).toBe(true);
+    expect(canOpenAppPage('models', true)).toBe(true);
+    expect(canOpenAppPage('models', false)).toBe(false);
   });
 });
 

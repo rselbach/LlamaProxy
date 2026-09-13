@@ -25,8 +25,8 @@ const assert = require('node:assert/strict');
       await page.goto('http://localhost:1421/tests/fixtures/agent-backups.html?reset-selections&' + query);
       await ready();
     };
-    const remount = async embedded => {
-      await page.evaluate(embedded => window.fixtureRemount(embedded), embedded);
+    const remount = async () => {
+      await page.evaluate(() => window.fixtureRemount());
       await ready();
     };
     const sessionsReady = () => page.locator('.codex-session-row').first().waitFor();
@@ -35,13 +35,13 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('.codex-session-pagination span').textContent(), `第 ${number} 页`);
     };
 
-    // Every agent remembers its own tab, draft and feedback, in both entry points.
-    for (const width of [1280, 540]) for (const embedded of [false, true]) {
+    // Every agent remembers its own tab, draft and feedback.
+    for (const width of [1280, 540]) {
       await page.setViewportSize({ width, height: 900 });
-      await open(embedded ? 'embedded' : '');
+      await open('');
       await page.locator('.agent-model-trigger').click();
       await page.getByRole('option', { name: 'gpt-two' }).click();
-      if (!embedded) await button('如何选择').click();
+      await button('如何选择').click();
       await tab('配置管理').click();
       await button('手动备份').click();
       const notice = page.getByText('已手动备份当前磁盘配置，未包含未保存的表单修改。', { exact: true });
@@ -66,7 +66,7 @@ const assert = require('node:assert/strict');
       await active('基础配置');
       assert.equal(await tab('基础配置').evaluate(el => el === document.activeElement), true);
       assert.equal(await page.locator('.agent-model-trigger strong').textContent(), 'gpt-two');
-      if (!embedded) assert.equal(await page.locator('.agent-signin-help-toggle').getAttribute('aria-expanded'), 'true');
+      assert.equal(await page.locator('.agent-signin-help-toggle').getAttribute('aria-expanded'), 'true');
       await client('OpenCode').click();
       await active('配置管理');
       await client('Codex').click();
@@ -85,7 +85,7 @@ const assert = require('node:assert/strict');
     await page.getByText(/模拟配置写入失败/).waitFor();
     await page.getByText('待应用', { exact: true }).waitFor();
 
-    // Full and compact navigation remain independent, including Codex-only sessions.
+    // Codex sessions retain their page and selection across navigation and remounts.
     await open('');
     await tab('会话管理').click();
     await sessionsReady();
@@ -101,18 +101,10 @@ const assert = require('node:assert/strict');
     await active('会话管理');
     await sessionPage(2);
     assert.ok(await selectedSession.isChecked());
-    await remount(true);
-    await active('基础配置');
-    assert.equal(await tab('会话管理').count(), 0);
-    await tab('配置管理').click();
-    await remount(false);
+    await remount();
     await active('会话管理');
     await sessionPage(2);
     assert.ok(await selectedSession.isChecked());
-    await remount(true);
-    await active('配置管理');
-    await remount(false);
-    await sessionPage(2);
 
     // A failed reload leaves the remembered page and selection available for a retry.
     await tab('基础配置').click();
@@ -156,6 +148,6 @@ const assert = require('node:assert/strict');
     assert.deepEqual(await page.locator('.codex-session-row strong').allTextContents(), ['session-new']);
 
     assert.deepEqual(errors, []);
-    console.log('PASS: per-agent tabs, drafts, feedback, help, remounts, compact/full isolation, keyboard, narrow layouts, session pagination/selection and stale response handling');
+    console.log('PASS: per-agent tabs, drafts, feedback, help, remounts, keyboard, narrow layouts, session pagination/selection and stale response handling');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

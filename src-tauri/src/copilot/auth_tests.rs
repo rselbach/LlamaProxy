@@ -105,6 +105,7 @@ async fn invalid_routing_config_rolls_back_credentials_and_preserves_current_acc
         access_token: "original-token".into(),
         refresh_token: None,
         expires_at: None,
+        disabled_models: Vec::new(),
         models: vec![],
     };
     let mut service = service(

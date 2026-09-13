@@ -340,11 +340,7 @@ const DEFAULT_AGENT_VIEW_STATE: AgentViewState = {
 };
 
 // Keep navigation and feedback for this app session, including when the page unmounts.
-// The compact view has no session manager, so it keeps its own navigation history.
-let agentViewStateCache: Record<'full' | 'embedded', Partial<Record<AgentClientId, AgentViewState>>> = {
-  full: {},
-  embedded: {},
-};
+let agentViewStateCache: Partial<Record<AgentClientId, AgentViewState>> = {};
 
 const AGENT_MODEL_SELECTIONS_KEY = 'cpa-gui.agent-model-selections.v1';
 const AGENT_SELECTED_CLIENT_KEY = 'cpa-gui.agent-selected-client.v1';
@@ -688,27 +684,18 @@ function AgentModelPicker({
   );
 }
 
-type AgentsPageProps = {
-  embedded?: boolean;
-  onConfigurationApplied?: () => void;
-};
-
-export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsPageProps = {}) {
+export function AgentsPage() {
   const { t } = useI18n();
   const [selected, setSelected] = useState<AgentClientId>(readSelectedAgentClient);
   const [viewStateByClient, setViewStateByClient] = useState(() => agentViewStateCache);
-  const viewMode = embedded ? 'embedded' : 'full';
-  const viewState = viewStateByClient[viewMode][selected] ?? DEFAULT_AGENT_VIEW_STATE;
-  const activeSubpage = viewState.subpage === 'sessions' && (embedded || selected !== 'codex')
+  const viewState = viewStateByClient[selected] ?? DEFAULT_AGENT_VIEW_STATE;
+  const activeSubpage = viewState.subpage === 'sessions' && selected !== 'codex'
     ? DEFAULT_AGENT_SUBPAGE : viewState.subpage;
   const updateViewState = (patch: Partial<AgentViewState>) => {
     setViewStateByClient((current) => {
       const next = {
         ...current,
-        [viewMode]: {
-          ...current[viewMode],
-          [selected]: { ...(current[viewMode][selected] ?? DEFAULT_AGENT_VIEW_STATE), ...patch },
-        },
+        [selected]: { ...(current[selected] ?? DEFAULT_AGENT_VIEW_STATE), ...patch },
       };
       agentViewStateCache = next;
       return next;
@@ -1165,20 +1152,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     setClaudeModelMappingsDraftByClient((current) => ({ ...current, [selected]: next }));
   };
 
-  const selectEmbeddedModel = (value: string) => {
-    const model = findAgentModel(models, value);
-    if (!model) return;
-    if (isClaudeModelMappingClient) {
-      editClaudeModelMappings((current) => ({
-        ...current,
-        opus: model.name,
-        sonnet: model.name,
-        haiku: model.name,
-      }));
-    }
-    selectModel(model.name);
-  };
-
   const selectClaudeModelMapping = (
     role: 'opus' | 'sonnet' | 'haiku',
     value: string,
@@ -1331,7 +1304,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       if (isDeepSeekHarnessClient) await loadModels('deepseek-harness');
       setOauthConfigurationDraft(null);
       setConfigurationNotice(t(result.outcome === 'unchanged' ? 'agents.backup.unchanged' : 'agents.backup.updated'));
-      onConfigurationApplied?.();
     } catch (requestError) {
       if (!handleOAuthLoginError(requestError, 'apply')) {
         setConfigurationError(String(requestError));
@@ -1353,7 +1325,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       clearPendingChanges();
       await reloadStatusesAfterAction();
       setConfigurationNotice(t('agents.management.pluginInstalled'));
-      onConfigurationApplied?.();
     } catch (requestError) {
       setConfigurationError(String(requestError));
     } finally {
@@ -1392,7 +1363,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       clearPendingChanges();
       await reloadStatusesAfterAction();
       setConfigurationNotice(t(result.outcome === 'unchanged' ? 'agents.backup.unchanged' : 'agents.backup.updated'));
-      onConfigurationApplied?.();
     } catch (requestError) {
       setConfigurationError(String(requestError));
     } finally {
@@ -1447,7 +1417,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       const current = refreshed.find((status) => status.id === selected)?.currentModel;
       setModelByClient((values) => { const next = { ...values, [selected]: current ?? '' }; writeAgentModelSelections(next); return next; });
       setConfigurationNotice(t('agents.backup.updated'));
-      onConfigurationApplied?.();
       setOauthConfigurationDraft(null);
     } catch (requestError) {
       if (!handleOAuthLoginError(requestError, 'apply')) {
@@ -1669,7 +1638,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   };
 
   const availableSubpages = agentSubpages.filter(
-    (subpage) => (!subpage.clients || subpage.clients.includes(selected)) && (!embedded || subpage.id !== 'sessions'),
+    (subpage) => (!subpage.clients || subpage.clients.includes(selected)),
   );
   const oauthLoginRequiredDescription = oauthLoginRequiredAction === 'enable' ? (
     <>
@@ -1697,19 +1666,10 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   ) : null;
 
   return (
-    <section className={`page management-page agents-page${embedded ? ' agents-page-embedded' : ''}`}>
+    <section className="page management-page agents-page">
       <header className="management-header">
-        <div className={embedded ? 'agent-embedded-header-copy' : undefined}>
-          {embedded ? (
-            <>
-              <h1>{t('agents.embedded.title')}</h1>
-              <p>{t('agents.embedded.subtitle')}</p>
-            </>
-          ) : (
-            <>
-              <h1>{t('agents.title')}</h1>
-            </>
-          )}
+        <div>
+          <h1>{t('agents.title')}</h1>
         </div>
         <div className="agent-header-actions">
           {detectionError ? (
@@ -1781,65 +1741,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
               </button>
             ))}
           </div>
-          {embedded && activeSubpage === 'core' ? (
-            <div className="agent-minimal-config" id="agent-subpage-panel-core" role="tabpanel" aria-labelledby="agent-subpage-tab-core">
-              <div className="agent-minimal-client-summary">
-                <span className="agent-minimal-client-icon"><AgentMark definition={activeDefinition} size={24} /></span>
-                <div>
-                  <strong>{activeDefinition.name}</strong>
-                  <span>{activeStatus?.installed ? t('agents.clientDetected') : t('agents.clientNotDetected')}</span>
-                </div>
-                <span className="agent-minimal-version" title={activeStatus?.version ?? undefined}>
-                  {activeStatus?.version ?? activeStatus?.appVersion ?? activeStatus?.cliVersion ?? t('agents.notFetched')}
-                </span>
-              </div>
-
-              {activeStatus?.error || activeStatus?.warnings.length ? (
-                <div className="agent-minimal-message" aria-live="polite">
-                  {activeStatus.error ? (
-                    <span className="agent-inline-message error" role="alert">{activeStatus.error}</span>
-                  ) : (
-                    <span className="agent-inline-message warning">{activeStatus.warnings.join('；')}</span>
-                  )}
-                </div>
-              ) : null}
-
-              {selected === 'claude-desktop' && !activeStatus?.claudeDesktopModelMappings ? <p className="agent-inline-message warning">{t('agents.backup.mappingRequired')}</p> : null}
-              <div className="agent-minimal-field">
-                <label htmlFor="embedded-agent-model">{t(isDeepSeekHarnessClient ? 'agents.harness.defaultModel' : 'agents.useModel')}</label>
-                <AgentModelPicker
-                  models={isClaudeModelMappingClient ? claudeMappingModels : models}
-                  value={isClaudeModelMappingClient ? claudeModelMappingsDraft.sonnet : selectedModel}
-                  loading={modelLoading}
-                  error={modelError}
-                  disabled={busy || !activeStatus?.installed || !activeStatus.supportedPlatform}
-                  onChange={selectEmbeddedModel}
-                  onRefresh={refreshModels}
-                />
-                {codexCatalogButton}{harnessCatalogButton}
-              </div>
-
-              {isDeepSeekHarnessClient ? <p className="agent-model-hint">{t('agents.harness.defaultHint')}</p> : null}
-
-              <div className="agent-minimal-actions">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={applySelectedConfiguration}
-                  disabled={busy || !canEnable || configurationWriteBlocked}
-                >
-                  {['apply', 'install-pi', 'repair-pi'].includes(busyAction ?? '') ? <LoaderCircle size={16} className="spin" /> : null}
-                  {isPiClient
-                    ? activeStatus?.pluginInstalled ? configurationActionLabel : t('agents.pi.install')
-                    : configurationActionLabel}
-                </button>
-
-              </div>
-
-            </div>
-          ) : null}
-
-          {!embedded && activeSubpage === 'core' ? (
+          {activeSubpage === 'core' ? (
             <div
               className="agent-core-config"
               id="agent-subpage-panel-core"
@@ -2107,7 +2009,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
             </div>
           ) : null}
 
-          {!embedded && selected === 'codex' && activeSubpage === 'sessions' ? (
+          {selected === 'codex' && activeSubpage === 'sessions' ? (
             <div
               className="agent-sessions-page"
               id="agent-subpage-panel-sessions"
