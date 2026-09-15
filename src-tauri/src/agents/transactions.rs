@@ -24,8 +24,16 @@ pub(crate) fn config_paths(client: &str, home: &Path) -> Result<Vec<PathBuf>, St
     ))
 }
 
-// Reject links (including Windows junctions) in every existing path component.
 pub(crate) fn validate_config_path(path: &Path) -> Result<(), String> {
+    validate_path(path, true)
+}
+
+// Backup packages must not redirect reads or writes outside their storage directory.
+pub(crate) fn validate_backup_path(path: &Path) -> Result<(), String> {
+    validate_path(path, false)
+}
+
+fn validate_path(path: &Path, allow_links: bool) -> Result<(), String> {
     if !path.is_absolute()
         || path
             .components()
@@ -44,12 +52,22 @@ pub(crate) fn validate_config_path(path: &Path) -> Result<(), String> {
                     use std::os::windows::fs::MetadataExt;
                     linked || meta.file_attributes() & 0x400 != 0
                 };
-                if linked {
+                if linked && !allow_links {
                     return Err(format!(
                         "Configuration paths must not contain symbolic links: {}",
                         path_to_string(ancestor)
                     ));
                 }
+                let meta = if linked {
+                    fs::metadata(ancestor).map_err(|error| {
+                        format!(
+                            "Unable to resolve configuration link {}: {error}",
+                            path_to_string(ancestor)
+                        )
+                    })?
+                } else {
+                    meta
+                };
                 if ancestor == path && !meta.is_file() {
                     return Err("Configuration path is not a regular file".into());
                 }

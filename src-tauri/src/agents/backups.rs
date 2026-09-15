@@ -161,10 +161,10 @@ fn make_version(client: &str, paths: &[PathBuf], images: &Images) -> BackupVersi
 
 fn write_version(paths: &[PathBuf], version: &BackupVersion) -> Result<(), String> {
     let path = version_path(&version.client, paths, &version.id)?;
-    validate_config_path(&path)?;
+    validate_backup_path(&path)?;
     let parent = path.parent().ok_or("Invalid backup directory")?;
     fs::create_dir_all(parent).map_err(|_| "Failed to create the manual backup directory")?;
-    validate_config_path(&path)?;
+    validate_backup_path(&path)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -206,6 +206,7 @@ fn write_version(paths: &[PathBuf], version: &BackupVersion) -> Result<(), Strin
 
 fn read_version(client: &str, paths: &[PathBuf], id: &str) -> Result<BackupVersion, String> {
     let path = version_path(client, paths, id)?;
+    validate_backup_path(&path)?;
     let bytes = read_agent_bytes(&path)?.ok_or("Backup file is missing")?;
     let package: BackupPackage = serde_json::from_slice(&bytes)
         .map_err(|_| "The backup is corrupt and cannot be restored. You can delete this version")?;
@@ -305,7 +306,7 @@ pub(crate) fn create_backup(client: &str, home: &Path) -> Result<BackupSummary, 
 pub(crate) fn list_backups(client: &str, home: &Path) -> Result<BackupList, String> {
     let paths = config_paths(client, home)?;
     let directory = backup_directory(client, &paths)?;
-    validate_config_path(&directory.join(".path-check"))?;
+    validate_backup_path(&directory.join(".path-check"))?;
     let entries = match fs::read_dir(&directory) {
         Ok(entries) => entries,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -339,7 +340,7 @@ pub(crate) fn delete_backup(client: &str, home: &Path, id: &str) -> Result<(), S
     let paths = config_paths(client, home)?;
     let path = version_path(client, &paths, id)?;
     // Check parents, then unlink only this entry. A damaged or symlinked package can be deleted safely.
-    validate_config_path(
+    validate_backup_path(
         &path
             .parent()
             .ok_or("Invalid backup directory")?

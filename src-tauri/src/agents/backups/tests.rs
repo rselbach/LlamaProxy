@@ -667,26 +667,37 @@ fn link_directory(target: &Path, link: &Path) {
 }
 
 #[test]
-fn linked_configuration_and_backup_directories_are_rejected() {
+fn linked_configuration_is_supported_but_linked_backup_directories_are_rejected() {
     let home = Home::new();
     let outside = Home::new();
     let paths = config_paths("codex", &home.0).unwrap();
     save(&outside.0.join("config.toml"), "custom='outside'");
     let link = paths[0].parent().unwrap();
     link_directory(&outside.0, link);
-    assert!(create_backup("codex", &home.0).is_err());
-    assert!(template(&home.0, AgentClient::Codex).is_err());
+    create_backup("codex", &home.0).unwrap();
+    template(&home.0, AgentClient::Codex).unwrap();
+    let updated = fs::read_to_string(outside.0.join("config.toml")).unwrap();
+    updated.parse::<toml::Value>().unwrap();
+    assert_eq!(fs::read_to_string(&paths[0]).unwrap(), updated);
+    assert_ne!(updated, "custom='outside'");
     assert_eq!(
-        fs::read_to_string(outside.0.join("config.toml")).unwrap(),
-        "custom='outside'"
+        fs::canonicalize(link).unwrap(),
+        fs::canonicalize(&outside.0).unwrap()
     );
+    #[cfg(unix)]
+    fs::remove_file(link).unwrap();
+    #[cfg(windows)]
     fs::remove_dir(link).unwrap();
     let data = agent_data_directory(&paths).unwrap();
     fs::create_dir_all(&data).unwrap();
+    fs::remove_dir_all(data.join("backups")).unwrap();
     link_directory(&outside.0, &data.join("backups"));
     assert!(create_backup("codex", &home.0).is_err());
     assert!(list_backups("codex", &home.0).is_err());
     assert!(delete_backup("codex", &home.0, "1").is_err());
+    #[cfg(unix)]
+    fs::remove_file(data.join("backups")).unwrap();
+    #[cfg(windows)]
     fs::remove_dir(data.join("backups")).unwrap();
 }
 
