@@ -27,6 +27,9 @@ pub(crate) fn show_main_window_on_main_thread(app_handle: &tauri::AppHandle) {
         return;
     };
     set_macos_dock_visible(app_handle, true);
+    if let Err(error) = app_handle.show() {
+        eprintln!("Failed to activate the application: {error}");
+    }
     if let Err(error) = window.show() {
         eprintln!("Failed to show the main window: {error}");
         set_macos_dock_visible(app_handle, false);
@@ -77,33 +80,12 @@ pub(crate) fn show_macos_tray_menu<R: tauri::Runtime>(tray: &TrayIcon<R>) {
 
 #[cfg(target_os = "macos")]
 pub(crate) fn setup_macos_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Result<()> {
-    let locale = app
-        .state::<GuiConfigState>()
-        .snapshot()
-        .map(|config| config.locale)
-        .unwrap_or_else(|_| "zh-CN".to_string());
-    let open_main_window = MenuItem::with_id(
-        app,
-        "open-main-window",
-        locale_text(&locale, "打开主界面", "Open Main Window"),
-        true,
-        None::<&str>,
-    )?;
-    let quit = MenuItem::with_id(
-        app,
-        "quit",
-        locale_text(&locale, "退出", "Quit"),
-        true,
-        None::<&str>,
-    )?;
-    let menu = Menu::with_items(app, &[&open_main_window, &quit])?;
     let click_state = Arc::new(Mutex::new(MacosTrayClickState::default()));
     let double_click_interval = Duration::from_secs_f64(NSEvent::doubleClickInterval());
 
     TrayIconBuilder::with_id(MACOS_TRAY_ID)
         .icon(MACOS_TRAY_ICON)
         .icon_as_template(true)
-        .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app_handle, event| match event.id().as_ref() {
             "open-main-window" => show_main_window(app_handle),
@@ -111,15 +93,55 @@ pub(crate) fn setup_macos_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Resul
             _ => {}
         })
         .on_tray_icon_event(move |tray, event| {
-            if !matches!(
+            let is_double_click = matches!(
                 event,
                 TrayIconEvent::Click {
                     button: MouseButton::Left,
+                    button_state: MouseButtonState::Down,
+                    ..
+                }
+            );
+            let is_right_click = matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Right,
                     button_state: MouseButtonState::Up,
                     ..
                 }
-            ) {
+            );
+
+            if !is_double_click && !is_right_click {
                 return;
+            }
+
+            if is_right_click {
+                let app_handle = tray.app_handle();
+                let open_main_window = MenuItem::with_id(
+                    app_handle,
+                    "open-main-window",
+                    locale_text("en", "打开主界面", "Open Main Window"),
+                    true,
+                    None::<&str>,
+                );
+                let quit = MenuItem::with_id(
+                    app_handle,
+                    "quit",
+                    locale_text("en", "退出", "Quit"),
+                    true,
+                    None::<&str>,
+                );
+                if let (Ok(open_main_window), Ok(quit)) = (open_main_window, quit) {
+                    if let Ok(menu) = Menu::with_items(app_handle, &[&open_main_window, &quit]) {
+                        if let Err(error) = tray.set_menu(Some(menu)) {
+                            eprintln!("Failed to attach the tray menu: {error}");
+                            return;
+                        }
+                        show_macos_tray_menu(tray);
+                        if let Err(error) = tray.set_menu(None::<Menu<tauri::Wry>>) {
+                            eprintln!("Failed to detach the tray menu: {error}");
+                        }
+                    }
+                }
             }
 
             let now = Instant::now();
@@ -128,8 +150,6 @@ pub(crate) fn setup_macos_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Resul
                 return;
             };
             state.sequence += 1;
-            let sequence = state.sequence;
-
             if state
                 .last_click
                 .is_some_and(|last_click| now.duration_since(last_click) <= double_click_interval)
@@ -142,31 +162,6 @@ pub(crate) fn setup_macos_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Resul
 
             state.last_click = Some(now);
             drop(state);
-
-            let app_handle = tray.app_handle().clone();
-            let click_state = Arc::clone(&click_state);
-            let tray_id = tray.id().clone();
-            thread::spawn(move || {
-                thread::sleep(double_click_interval);
-                let should_show_menu = match click_state.lock() {
-                    Ok(mut state) if state.sequence == sequence => {
-                        state.last_click = None;
-                        true
-                    }
-                    Ok(_) => false,
-                    Err(_) => {
-                        eprintln!("Failed to read tray click state");
-                        false
-                    }
-                };
-                if !should_show_menu {
-                    return;
-                }
-
-                if let Some(tray) = app_handle.tray_by_id(&tray_id) {
-                    show_macos_tray_menu(&tray);
-                }
-            });
         })
         .build(app)?;
 
