@@ -26,6 +26,7 @@ import {
   createOAuthLoginSuccessCache,
   shouldShowOAuthLoginStatus,
 } from '../services/oauthLoginState';
+import { ClaudeCliConnection } from '../components/ClaudeCliConnection';
 import { CopilotConnection } from '../components/CopilotConnection';
 import { AuthFileManagementPage } from './AuthFileManagementPage';
 import { QuotaPage } from './QuotaPage';
@@ -490,6 +491,7 @@ export function OAuthLoginPage() {
       <InlineNotice key={feedback.revision} notice={feedback.notice} onDismiss={feedback.clearNotice} />
       <div className="oauth-grid">
         <CopilotConnection browser={selectedBrowser} />
+        <ClaudeCliConnection />
         {oauthProviders.map((provider) => {
           const state = states[provider.id] ?? { status: 'idle' as const };
           const canSubmitCallback = OAUTH_CALLBACK_SUPPORTED.has(provider.id) && Boolean(state.url);

@@ -4,6 +4,7 @@ mod agents;
 mod app_settings;
 mod app_update;
 mod claude_catalog;
+mod claude_cli;
 mod codex_catalog;
 mod codex_sessions;
 mod configuration_watcher;
@@ -2476,6 +2477,9 @@ fn main() {
                     if let Err(error) = copilot::sync_core_config() {
                         eprintln!("Failed to restore Copilot routes for the adopted core: {error}");
                     }
+                    if let Err(error) = claude_cli::sync_core_config() {
+                        eprintln!("Failed to restore Claude CLI routes for the adopted core: {error}");
+                    }
                     eprintln!(
                         "Adopted the CPA core running in the current directory: PID {}",
                         adopted_process_ids
@@ -2593,6 +2597,10 @@ fn main() {
             copilot::refresh_copilot_models,
             copilot::set_copilot_model_enabled,
             copilot::disconnect_copilot,
+            claude_cli::get_claude_cli_status,
+            claude_cli::connect_claude_cli,
+            claude_cli::set_claude_cli_model_enabled,
+            claude_cli::disconnect_claude_cli,
             management_api::start_oauth_login,
             management_api::get_oauth_status,
             management_api::submit_oauth_callback,

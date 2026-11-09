@@ -1,4 +1,4 @@
-import { isManagedCopilotRecord } from './copilot';
+import { isManagedRecord } from './managedRecords';
 import { isRecord, normalizeAuthIndex, readBoolean, readString, responseList } from './managementApi';
 import { modelMatchesRule, normalizeOAuthExcludedRules, oauthModelsFromPayload } from './oauthModels';
 import { modelsFromRecord, type ModelOption } from './modelService';
@@ -40,15 +40,17 @@ export type OAuthModelSource = {
   excludedRules: string[];
 };
 
-export type CopilotModelSource = {
-  kind: 'copilot';
-  id: 'copilot';
+// A provider LlamaProxy serves through its own adapter. The adapter owns the
+// model list and which models are switched off.
+export type ManagedModelSource = {
+  kind: 'managed';
+  id: 'copilot' | 'claude-cli';
   label: string;
   models: ModelOption[];
   disabledModels: string[];
 };
 
-export type AvailableModelSource = ConfigModelSource | OAuthModelSource | CopilotModelSource;
+export type AvailableModelSource = ConfigModelSource | OAuthModelSource | ManagedModelSource;
 
 export type NativeDefaultCatalogs = Partial<Record<ProviderSection, Record<string, unknown>[]>>;
 
@@ -152,7 +154,7 @@ export const configuredModelSources = (
 ): ConfigModelSource[] => providerSections.flatMap((section) => {
   const records = responseList(payload, section);
   return records.flatMap((record, index) => {
-    if (isManagedCopilotRecord(record)) return [];
+    if (isManagedRecord(record)) return [];
     const name = readString(record, 'name');
     const baseUrl = readString(record, 'base-url', 'baseUrl');
     const id = providerSourceId(section, name, baseUrl, record);
@@ -226,7 +228,7 @@ export const oauthModelSources = (
 };
 
 export const modelIsEnabled = (source: AvailableModelSource, model: ModelOption): boolean => {
-  if (source.kind === 'copilot') {
+  if (source.kind === 'managed') {
     return !source.disabledModels.some((name) => name.toLowerCase() === model.name.toLowerCase());
   }
   if (source.kind === 'config' && source.section === 'openai-compatibility') {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { claudeCliCommand, setClaudeCliModelEnabled } from '../services/claudeCli';
 import { copilotCommand, setCopilotModelEnabled } from '../services/copilot';
 import {
   configRecordWithModelEnabled,
@@ -57,6 +58,9 @@ export function ModelsPage() {
       const copilotResult = await copilotCommand('get_copilot_status')
         .then((status) => ({ status, error: '' }))
         .catch((copilotError: unknown) => ({ status: null, error: String(copilotError) }));
+      const claudeCliResult = await claudeCliCommand('get_claude_cli_status')
+        .then((status) => ({ status, error: '' }))
+        .catch((claudeCliError: unknown) => ({ status: null, error: String(claudeCliError) }));
       const definitionErrors: Record<string, string> = {};
       const definitions = Object.fromEntries(await Promise.all(oauthProviders.map(async (provider) => {
         try {
@@ -104,13 +108,21 @@ export function ModelsPage() {
       const oauth = oauthModelSources(authFiles, definitions, exclusions);
       const copilot = copilotResult.status;
       const copilotSource: AvailableModelSource[] = copilot?.login ? [{
-        kind: 'copilot',
+        kind: 'managed',
         id: 'copilot',
         label: 'GitHub Copilot',
         models: copilot.models.map((name) => ({ name })),
         disabledModels: copilot.disabledModels,
       }] : [];
-      setSources([...oauth, ...copilotSource, ...configured]);
+      const claudeCli = claudeCliResult.status;
+      const claudeCliSource: AvailableModelSource[] = claudeCli?.account ? [{
+        kind: 'managed',
+        id: 'claude-cli',
+        label: 'Claude CLI',
+        models: claudeCli.models.map((name) => ({ name })),
+        disabledModels: claudeCli.disabledModels,
+      }] : [];
+      setSources([...oauth, ...copilotSource, ...claudeCliSource, ...configured]);
       const providerErrors = [
         ...oauth.flatMap((source) => definitionErrors[source.provider]
           ? [`${source.label}: ${definitionErrors[source.provider]}`]
@@ -129,6 +141,7 @@ export function ModelsPage() {
             : [];
         }),
         ...(copilotResult.error ? [`GitHub Copilot: ${copilotResult.error}`] : []),
+        ...(claudeCliResult.error ? [`Claude CLI: ${claudeCliResult.error}`] : []),
       ];
       if (providerErrors.length > 0) setError(providerErrors.join('\n'));
     } catch (loadError) {
@@ -161,8 +174,9 @@ export function ModelsPage() {
     setBusy(action);
     setError('');
     try {
-      if (source.kind === 'copilot') {
-        await setCopilotModelEnabled(modelName, enabled);
+      if (source.kind === 'managed') {
+        const setEnabled = source.id === 'copilot' ? setCopilotModelEnabled : setClaudeCliModelEnabled;
+        await setEnabled(modelName, enabled);
       } else if (source.kind === 'oauth') {
         const rules = enabled
           ? source.excludedRules.filter((rule) => rule.includes('*') || rule !== modelName.toLowerCase())
@@ -220,7 +234,7 @@ export function ModelsPage() {
             <tbody>
               {visibleRows.map(({ source, model }) => {
                 const enabled = modelIsEnabled(source, model);
-                const wildcard = source.kind !== 'copilot' && source.excludedRules.some((rule) =>
+                const wildcard = source.kind !== 'managed' && source.excludedRules.some((rule) =>
                   rule.includes('*') && modelMatchesRule(routedModelName(source, model), rule));
                 const providerDisabled = source.kind === 'config' && source.disabled;
                 const defaultsUnknown = source.kind === 'config'

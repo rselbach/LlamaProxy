@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { isManagedCopilotRecord, parseCopilotStatus } from '../src/services/copilot';
+import { parseCopilotStatus } from '../src/services/copilot';
+import { isManagedRecord } from '../src/services/managedRecords';
 import { providerCategoryMatchesRecord, sectionRecordsFromConfig } from '../src/pages/ApiAccessPage';
 
 describe('Copilot connection boundary', () => {
@@ -26,11 +27,11 @@ describe('Copilot-owned core routes', () => {
   const managed = { name: 'GitHub Copilot', 'base-url': 'http://127.0.0.1:4321/llamaproxy-copilot' };
 
   test('identifies only LlamaProxy loopback routes, not similarly named user providers', () => {
-    expect(isManagedCopilotRecord(managed)).toBe(true);
+    expect(isManagedRecord(managed)).toBe(true);
     for (const record of [{ name: 'GitHub Copilot' }, { 'base-url': 'https://api.githubcopilot.com' },
       { 'base-url': 'http://127.0.0.1:4321/llamaproxy-copilot-other' },
       { 'base-url': 'http://example.com/llamaproxy-copilot' }]) {
-      expect(isManagedCopilotRecord(record)).toBe(false);
+      expect(isManagedRecord(record)).toBe(false);
     }
   });
 

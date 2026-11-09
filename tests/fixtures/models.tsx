@@ -26,6 +26,13 @@ let config: Record<string, unknown> = {
 };
 let copilotDisabled = ['copilot/paintball-preview'];
 let oauthExcluded = { codex: ['gpt-image-*'] };
+let claudeCliDisabled = ['claude-cli/haiku'];
+const claudeCliStatus = () => ({
+  installed: true,
+  account: 'annie@greendale.edu',
+  models: ['claude-cli/claude-opus-5-5', 'claude-cli/haiku'],
+  disabledModels: claudeCliDisabled,
+});
 
 mockIPC(async (command, args) => {
   if (command === 'set_app_locale') return null;
@@ -40,6 +47,13 @@ mockIPC(async (command, args) => {
     const enabled = Boolean((args as { enabled: boolean }).enabled);
     copilotDisabled = enabled ? copilotDisabled.filter((item) => item !== model) : [...copilotDisabled, model];
     return { login: 'troy-barnes', models: ['copilot/gpt-5.4', 'copilot/paintball-preview'], disabledModels: copilotDisabled, pending: null };
+  }
+  if (command === 'get_claude_cli_status') return claudeCliStatus();
+  if (command === 'set_claude_cli_model_enabled') {
+    const model = String((args as { model: string }).model);
+    const enabled = Boolean((args as { enabled: boolean }).enabled);
+    claudeCliDisabled = enabled ? claudeCliDisabled.filter((item) => item !== model) : [...claudeCliDisabled, model];
+    return claudeCliStatus();
   }
   if (command !== 'management_request') throw new Error(`Unhandled fixture command: ${command}`);
   const request = (args as { request: { method: string; path: string; body?: unknown } }).request;

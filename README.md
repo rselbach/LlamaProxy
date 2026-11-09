@@ -90,7 +90,7 @@ The standard console provides controls beyond the initial setup:
 
 - **OAuth** manages account logins, credential files, and provider quota
   queries. Login options include Codex, Claude, Antigravity, Kimi, xAI, and GitHub
-  Copilot.
+  Copilot. The same page connects Claude CLI.
 - **API Access** manages Codex, Claude, Gemini, DeepSeek, and other
   OpenAI-compatible providers, including model selection and health checks.
 - **Agent Configuration** manages client settings, manual backups, model
@@ -124,6 +124,33 @@ Copilot support is built into LlamaProxy. It requires no plugin or separate
 service. See [Copilot routing and limits](docs/copilot.md) for implementation
 and verification details.
 
+### Connect Claude CLI
+
+Claude CLI serves your Claude subscription by running the
+[Claude Code](https://code.claude.com) command-line tool installed on your
+computer. Claude Code keeps its own sign-in. LlamaProxy never reads or stores
+it.
+
+> **Your Claude account carries the risk.** Requests count toward your Claude
+> plan's usage limits. Anthropic's
+> [terms for Claude Code](https://code.claude.com/docs/en/legal-and-compliance)
+> do not clearly allow using a subscription through another application, and
+> Anthropic can enforce them without notice. With **Allow LAN** on, anyone who
+> holds a proxy key spends your plan. Those terms forbid routing a plan's
+> credentials on behalf of other users, so keep access to your own devices.
+
+1. Install Claude Code and run `claude auth login` with your Claude
+   subscription.
+2. Start the core, then open **OAuth**.
+3. On the **Claude CLI** card, select **Connect**. The card shows the account
+   that Claude Code is signed in to.
+4. Choose a `claude-cli/…` model in **Agent Configuration** or your API client.
+
+Claude Code's own system prompt stays in place, and your client's system prompt
+is added after it. **Disconnect** removes the model routes. It does not sign
+Claude Code out. See [Claude CLI routing and limits](docs/claude-cli.md) for
+how conversations, tools, and models are handled.
+
 ## Protect your credentials and data
 
 The proxy listens on `127.0.0.1:11432` by default. Leave **Allow LAN** off unless
@@ -152,6 +179,9 @@ Copilot credentials are stored separately in `copilot-account.json` in the
 runtime data directory, with owner-only file permissions on macOS and Linux.
 Treat this file as a secret when making backups. Short-lived Copilot tokens
 stay in memory and are not written into the core configuration.
+
+The Claude CLI connection stores only the account name, in
+`claude-cli-account.json`. The Claude sign-in stays with Claude Code.
 
 Quit the app before copying its runtime data directory for a backup. Treat the
 copy as sensitive: configuration files and client backups can contain keys or

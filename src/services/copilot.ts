@@ -46,15 +46,3 @@ export async function copilotCommand(command: CopilotCommand): Promise<CopilotSt
 export async function setCopilotModelEnabled(model: string, enabled: boolean): Promise<CopilotStatus> {
   return parseCopilotStatus(await invoke<unknown>('set_copilot_model_enabled', { model, enabled }));
 }
-
-export function isManagedCopilotRecord(record: Record<string, unknown>): boolean {
-  const baseUrl = record['base-url'];
-  if (typeof baseUrl !== 'string') return false;
-  try {
-    const url = new URL(baseUrl);
-    return url.protocol === 'http:' && url.hostname === '127.0.0.1'
-      && url.pathname === '/llamaproxy-copilot';
-  } catch {
-    return false;
-  }
-}
