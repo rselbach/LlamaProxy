@@ -808,7 +808,7 @@ export function ThinkingAliasesPage() {
             <div className="thinking-alias-preview">
               {fastEnabled && !normalizedEffort ? <Zap size={18} /> : <BrainCircuit size={18} />}
               <div>
-                <span>{selectedSource?.model || t('aliases.notSelected')} <ArrowRight size={13} /> {alias || t('aliases.enterAlias')}</span>
+                <span>{alias || t('aliases.enterAlias')} <ArrowRight size={13} /> {selectedSource?.model || t('aliases.notSelected')}</span>
               </div>
             </div>
             </div>

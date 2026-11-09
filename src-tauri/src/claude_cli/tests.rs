@@ -536,6 +536,82 @@ async fn connecting_requires_a_subscription_sign_in_and_owns_only_its_routes() {
     assert!(build().0.status().account.is_none());
 }
 
+fn create_model_alias(service: &ClaudeCli, model: &str, alias: &str) {
+    let content = fs::read_to_string(&service.config_path).unwrap();
+    let available = crate::parse_agent_model_options(&json!({"data": [{"id": model}]})).unwrap();
+    let sources = crate::resolved_oauth_alias_sources(
+        &content,
+        &[],
+        &available,
+        crate::AliasSourceCapability::Base,
+    )
+    .unwrap();
+    let source = sources
+        .iter()
+        .find(|source| source.source.model == model)
+        .unwrap();
+    let updated = crate::add_model_alias_to_yaml(&content, source, alias, "", false).unwrap();
+    fs::write(&service.config_path, updated).unwrap();
+}
+
+#[test]
+fn custom_model_aliases_survive_a_restart_and_unrelated_model_changes() {
+    let r = TestDir::new();
+    fs::write(r.0.join("config.yaml"), "port: 11432\n").unwrap();
+    let build = || {
+        ClaudeCli::build(
+            r.0.join("account.json"),
+            r.0.join("config.yaml"),
+            r.0.join("work"),
+            None,
+        )
+        .unwrap()
+    };
+    let (service, _listener) = build();
+    service
+        .commit(Some(Account {
+            label: "annie@greendale.edu".into(),
+            disabled_models: Vec::new(),
+        }))
+        .unwrap();
+    create_model_alias(&service, "claude-cli/haiku", "greendale");
+    create_model_alias(&service, "claude-cli/haiku", "study-group");
+
+    let (restarted, _listener) = build();
+    restarted.configure(&restarted.enabled_models()).unwrap();
+    restarted
+        .set_model_enabled("claude-cli/opus", false)
+        .unwrap();
+    restarted.configure(&restarted.enabled_models()).unwrap();
+    let document: Value = serde_norway::from_str(&r.read("config.yaml")).unwrap();
+    let entries = document["claude-api-key"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["base-url"], restarted.base_url);
+    assert_eq!(entries[0]["api-key"], restarted.key);
+    let models = entries[0]["models"].as_array().unwrap();
+    for alias in ["claude-cli/haiku", "greendale", "study-group"] {
+        assert_eq!(
+            models.iter().filter(|model| model["alias"] == alias).count(),
+            1
+        );
+        assert!(models.contains(&json!({"name": "haiku", "alias": alias})));
+    }
+
+    let content =
+        crate::remove_thinking_alias_from_yaml(&r.read("config.yaml"), "greendale").unwrap();
+    fs::write(&restarted.config_path, content).unwrap();
+    restarted.configure(&restarted.enabled_models()).unwrap();
+    let aliases = crate::thinking_aliases_from_yaml(&r.read("config.yaml")).unwrap();
+    assert!(!aliases.iter().any(|entry| entry.alias == "greendale"));
+    assert!(aliases.iter().any(|entry| entry.alias == "study-group"));
+
+    restarted
+        .set_model_enabled("claude-cli/haiku", false)
+        .unwrap();
+    let aliases = crate::thinking_aliases_from_yaml(&r.read("config.yaml")).unwrap();
+    assert!(!aliases.iter().any(|entry| entry.alias == "study-group"));
+}
+
 async fn core_json(base: &str, path: &str, body: &Value) -> Value {
     let response = reqwest::Client::new()
         .post(format!("{base}{path}"))
@@ -553,7 +629,6 @@ async fn core_json(base: &str, path: &str, body: &Value) -> Value {
 
 // Starts the CLIProxyAPI executable with only the adapter's managed route.
 async fn start_core(r: &TestDir, service: &ClaudeCli) -> (crate::CoreChild, String) {
-    use std::time::{Duration, Instant};
     let binary = std::env::var("LLAMAPROXY_TEST_CORE").expect("LLAMAPROXY_TEST_CORE is required");
     let port = TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -581,6 +656,12 @@ async fn start_core(r: &TestDir, service: &ClaudeCli) -> (crate::CoreChild, Stri
         .stderr(log);
     let core = crate::spawn_core_child(command).unwrap();
     let base = format!("http://127.0.0.1:{port}");
+    wait_for_core_model(r, &base, "claude-cli/haiku").await;
+    (core, base)
+}
+
+async fn wait_for_core_model(r: &TestDir, base: &str, model: &str) {
+    use std::time::{Duration, Instant};
     let deadline = Instant::now() + Duration::from_secs(15);
     loop {
         let catalog = reqwest::Client::new()
@@ -589,18 +670,59 @@ async fn start_core(r: &TestDir, service: &ClaudeCli) -> (crate::CoreChild, Stri
             .send()
             .await;
         if let Ok(catalog) = catalog {
-            if catalog.text().await.unwrap().contains("claude-cli/haiku") {
+            let catalog: Value = catalog.json().await.unwrap();
+            if r.read("core.log").contains("file watcher started")
+                && catalog["data"].as_array().is_some_and(|models| {
+                    models.iter().any(|entry| entry["id"] == model)
+                })
+            {
                 break;
             }
         }
         assert!(
             Instant::now() < deadline,
-            "Core did not start: {}",
+            "Core did not expose {model}: {}",
             r.read("core.log")
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    (core, base)
+}
+
+#[tokio::test]
+#[ignore = "set LLAMAPROXY_TEST_CORE to the bundled CLIProxyAPI executable"]
+async fn custom_model_alias_routes_to_claude_cli_through_the_core() {
+    let r = TestDir::new();
+    let service = start(
+        &r,
+        fake_claude(&r, &signed_in(), &[reply(text_output("Greendale."))]),
+    );
+    let (_core, base) = start_core(&r, &service).await;
+    create_model_alias(&service, "claude-cli/haiku", "study-group");
+    service.configure(&service.enabled_models()).unwrap();
+    wait_for_core_model(&r, &base, "study-group").await;
+
+    for (path, request) in [
+        ("/v1/chat/completions", json!({"model": "study-group",
+            "messages": [{"role": "user", "content": "What college?"}]})),
+        ("/v1/responses", json!({"model": "study-group",
+            "input": [{"type": "message", "role": "user",
+                "content": [{"type": "input_text", "text": "What college?"}]}]})),
+        ("/v1/messages", json!({"model": "study-group", "max_tokens": 64,
+            "messages": [{"role": "user", "content": "What college?"}]})),
+    ] {
+        let response = core_json(&base, path, &request).await;
+        assert!(
+            response.to_string().contains("Greendale."),
+            "{path}: {response}"
+        );
+    }
+    for pid in process_ids(&r) {
+        let arguments = r.read(&format!("args.{pid}"));
+        let arguments: Vec<_> = arguments.lines().collect();
+        let at = arguments.iter().position(|arg| *arg == "--model").unwrap();
+        assert_eq!(arguments[at + 1], "haiku");
+    }
+    service.disconnect().unwrap();
 }
 
 // The parked process is found again only if the conversation still reads the

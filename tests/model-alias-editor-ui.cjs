@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync } = require('node:fs');
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_BROWSER || 'msedge', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     page.setDefaultTimeout(10000);
@@ -83,8 +83,23 @@ const { mkdirSync } = require('node:fs');
     assert.equal((await writes()).at(-1).args.originalAlias, undefined);
     assert.equal((await writes()).at(-1).args.expectedRevision, undefined);
     assert.equal((await writes()).at(-1).args.alias, 'new-alias');
+
+    await page.getByRole('button', { name: 'Create Alias', exact: true }).click();
+    await dialog.locator('#thinking-model-search').fill('claude-cli/haiku');
+    await page.getByRole('option').click();
+    await dialog.locator('#thinking-alias-name').fill('greendale');
+    const preview = await dialog.locator('.thinking-alias-preview span').innerText();
+    assert.equal(preview.replace(/\s+/g, ' '), 'greendale claude-cli/haiku');
+    await dialog.getByRole('button', { name: 'Create Alias', exact: true }).click();
+    await dialog.waitFor({ state: 'detached' });
+    const plainAlias = (await writes()).at(-1).args;
+    assert.equal(plainAlias.sourceId, 'claude-api-key:0:0:provider-revision');
+    assert.equal(plainAlias.alias, 'greendale');
+    assert.equal(plainAlias.effort, '');
+    assert.equal(plainAlias.fast, false);
+    await page.getByText('Created model alias greendale', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
-    console.log('PASS: remapped source, cancel, focus trap, Escape, inline errors, retry, rename, source switch, create, narrow dialog');
+    console.log('PASS: remapped source, cancel, focus trap, Escape, inline errors, retry, rename, source switch, create, narrow dialog, plain Claude CLI alias');
   } finally {
     await browser.close();
   }

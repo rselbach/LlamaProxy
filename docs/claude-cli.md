@@ -20,6 +20,7 @@ a Claude Code process over stream-json and relays its stream events back.
 The adapter binds an OS-assigned port on `127.0.0.1` and requires a random key
 that changes on each app launch. When starting or adopting a core, LlamaProxy
 rewrites its one managed `claude-api-key` entry with the current port and key.
+Custom aliases created in **Model Aliases** are retained for enabled models.
 Native Claude credentials, Copilot routes, and user entries are preserved. The
 managed entry is hidden from **API Access** editing.
 

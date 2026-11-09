@@ -14,6 +14,10 @@ const source = {
   id: 'openai-compatibility:0:0:provider-revision', model: 'public-gpt', displayName: null,
   provider: 'Provider', kind: 'openai-compatible', protocol: 'openai', reasoningLevels: ['low', 'high'],
 };
+const claudeCliSource = {
+  id: 'claude-api-key:0:0:provider-revision', model: 'claude-cli/haiku', displayName: null,
+  provider: 'Claude CLI', kind: 'claude-api', protocol: 'claude', reasoningLevels: [],
+};
 let entry = {
   sourceModel: 'upstream-gpt', alias: 'my-alias', effort: 'high', provider: 'Provider',
   kind: 'openai-compatible', oauthChannel: null,
@@ -24,7 +28,8 @@ mockIPC(async (cmd, rawArgs) => {
   if (cmd === 'set_app_locale') return null;
   if (cmd === 'get_thinking_aliases') return [entry];
   if (cmd === 'get_speed_aliases') return [];
-  if (['get_model_alias_sources', 'get_thinking_alias_sources', 'get_speed_alias_sources'].includes(cmd)) return [source];
+  if (cmd === 'get_model_alias_sources') return [source, claudeCliSource];
+  if (['get_thinking_alias_sources', 'get_speed_alias_sources'].includes(cmd)) return [source];
   if (cmd === 'get_model_alias_edit_source') return {
     source: { ...source, id: `alias-edit:${args.alias}`, model: 'upstream-gpt' },
     revision: `revision:${args.alias}`, effort: (window as any).fixtureCurrentEffort ?? entry.effort, fast: false,

@@ -86,6 +86,24 @@ shown on **Home** rather than the default above.
 
 ## Manage connections
 
+### Create a model alias
+
+Use **Model Aliases** to choose the model behind an ID your client sends.
+For example, to route requests for `foo` to `claude-cli/haiku`:
+
+1. Open **Model Aliases** and select **Create Alias**.
+2. Select `claude-cli/haiku` as the **Original Model**.
+3. Enter `foo` as the **Model Alias**.
+4. Leave **Reasoning Effort** at **Not set** and **Fast** disabled unless you
+   want overrides, then select **Create Alias**.
+
+Configure your client to send `foo` as its model ID. The original
+`claude-cli/haiku` ID remains available. Claude CLI aliases survive app restarts
+and route refreshes. Disabling their target model or disconnecting Claude CLI
+removes those aliases.
+
+### Connection controls
+
 The standard console provides controls beyond the initial setup:
 
 - **OAuth** manages account logins, credential files, and provider quota

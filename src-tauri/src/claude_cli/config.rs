@@ -65,12 +65,30 @@ pub(super) fn configure(
         Some(Value::Null) | None => Vec::new(),
         _ => return Err(format!("Core {SECTION} configuration must be a list")),
     };
+    let custom_models: Vec<_> = entries
+        .iter()
+        .filter(|entry| managed(entry))
+        .filter_map(|entry| entry.get("models").and_then(Value::as_sequence))
+        .flatten()
+        .filter(|route| {
+            let Some(model) = route.get("name").and_then(Value::as_str) else {
+                return false;
+            };
+            models.contains(&model)
+                && route
+                    .get("alias")
+                    .and_then(Value::as_str)
+                    .is_some_and(|alias| alias != format!("{MODEL_PREFIX}{model}"))
+        })
+        .map(|route| json!(route))
+        .collect();
     entries.retain(|entry| !managed(entry));
     if !models.is_empty() {
         // Explicit aliases keep these names apart from native Claude models.
         let models: Vec<_> = models
             .iter()
             .map(|model| json!({"name": model, "alias": format!("{MODEL_PREFIX}{model}")}))
+            .chain(custom_models)
             .collect();
         // A subscription limit or a missing sign-in fails the same way on a
         // retry, and each attempt starts a Claude Code process.
