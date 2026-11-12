@@ -52,6 +52,24 @@ async fn alias_save_rejects_loss_of_api_access_before_any_write() {
     }
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn alias_save_rejects_loss_of_v8_provider_keys_before_any_write() {
+    let initial = "config-version: 8\napi-keys:\n  claude:\n    - name: claude-1\n      base-url: https://example.test\n      models: [{name: model-a}]\n      keys: [{api-key: troy-key}]\n";
+    let mut corrupted = yaml_json(initial);
+    corrupted["api-keys"]["claude"][0]["keys"] = serde_json::json!([]);
+    let core = MockCore::new(initial, Failure::None);
+    let result = put_management_alias_config_changes(
+        &core.config,
+        initial,
+        &serde_norway::to_string(&corrupted).unwrap(),
+    )
+    .await;
+    let (persisted, requests) = core.finish();
+    assert!(result.is_err(), "accepted the loss of a v8 provider key");
+    assert_eq!(persisted, yaml_json(initial));
+    assert!(!requests.iter().any(|request| request.starts_with("PUT")));
+}
+
 struct MockCore {
     config: GuiConfigFile,
     finished: Arc<AtomicBool>,

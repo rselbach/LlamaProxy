@@ -604,6 +604,9 @@ fn custom_model_aliases_survive_a_restart_and_unrelated_model_changes() {
     fs::write(&restarted.config_path, content).unwrap();
     restarted.configure(&restarted.enabled_models()).unwrap();
     let aliases = crate::thinking_aliases_from_yaml(&r.read("config.yaml")).unwrap();
+    assert!(!aliases
+        .iter()
+        .any(|entry| entry.alias == "claude-cli/haiku"));
     assert!(!aliases.iter().any(|entry| entry.alias == "greendale"));
     assert!(aliases.iter().any(|entry| entry.alias == "study-group"));
 
@@ -629,18 +632,31 @@ async fn core_json(base: &str, path: &str, body: &Value) -> Value {
     serde_json::from_str(&text).unwrap()
 }
 
-// Starts the CLIProxyAPI executable with only the adapter's managed route.
-async fn start_core(r: &TestDir, service: &ClaudeCli) -> (crate::CoreChild, String) {
-    let binary = std::env::var("LLAMAPROXY_TEST_CORE").expect("LLAMAPROXY_TEST_CORE is required");
-    let port = TcpListener::bind("127.0.0.1:0")
+fn free_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
         .unwrap()
-        .port();
-    let mut document = serde_norway::to_value(json!({"host": "127.0.0.1", "port": port,
+        .port()
+}
+
+// Starts the CLIProxyAPI executable with only the adapter's managed route.
+async fn start_core(r: &TestDir, service: &ClaudeCli) -> (crate::CoreChild, String) {
+    let port = free_port();
+    let document = serde_norway::to_value(json!({"host": "127.0.0.1", "port": port,
         "auth-dir": r.0.join("oauth"), "api-keys": ["client-test-key"],
         "remote-management": {"disable-control-panel": true}}))
     .unwrap();
+    start_core_with(r, service, port, document).await
+}
+
+async fn start_core_with(
+    r: &TestDir,
+    service: &ClaudeCli,
+    port: u16,
+    mut document: serde_norway::Value,
+) -> (crate::CoreChild, String) {
+    let binary = std::env::var("LLAMAPROXY_TEST_CORE").expect("LLAMAPROXY_TEST_CORE is required");
     config::configure(&mut document, &service.base_url, &service.key, &MODELS).unwrap();
     fs::write(
         &service.config_path,
@@ -726,6 +742,92 @@ async fn custom_model_alias_routes_to_claude_cli_through_the_core() {
             assert_eq!(arguments[at + 1], want, "{flag}");
         }
     }
+    service.disconnect().unwrap();
+}
+
+#[test]
+fn v8_configs_replace_the_managed_group_and_keep_the_others() {
+    let mut document: serde_norway::Value = serde_norway::from_str(
+        "config-version: 8\napi-keys:\n  claude:\n    - name: native\n      keys: [{api-key: native-secret}]\n    - name: claude-1\n      base-url: http://127.0.0.1:9/llamaproxy-claude-cli\n      models:\n        - {name: haiku, alias: claude-cli/haiku}\n        - {name: haiku, alias: study-group}\n      keys: [{api-key: stale-key}]\n",
+    )
+    .unwrap();
+    config::configure(
+        &mut document,
+        "http://127.0.0.1:4321/llamaproxy-claude-cli",
+        "fresh-key",
+        &["haiku"],
+    )
+    .unwrap();
+    let document: Value = serde_norway::from_value(document).unwrap();
+    assert!(document.get("claude-api-key").is_none(), "{document}");
+    let groups = document["api-keys"]["claude"].as_array().unwrap();
+    assert_eq!(groups.len(), 2, "{document}");
+    assert_eq!(groups[0]["name"], "native");
+    assert_eq!(
+        groups[1]["base-url"],
+        "http://127.0.0.1:4321/llamaproxy-claude-cli"
+    );
+    assert_eq!(groups[1]["request-retry"], 0);
+    assert_eq!(
+        groups[1]["keys"],
+        json!([{"api-key": "fresh-key", "cloak": {"mode": "never"}}])
+    );
+    let aliases: Vec<_> = groups[1]["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|model| model["alias"].as_str().unwrap())
+        .collect();
+    assert_eq!(aliases, ["claude-cli/haiku", "study-group"]);
+}
+
+#[tokio::test]
+#[ignore = "set LLAMAPROXY_TEST_CORE to a CLIProxyAPI 8 executable"]
+async fn a_v8_core_follows_the_adapter_and_its_effort_aliases() {
+    let r = TestDir::new();
+    let service = start(
+        &r,
+        fake_claude(&r, &signed_in(), &[reply(text_output("Greendale."))]),
+    );
+    let port = free_port();
+    let document = serde_norway::to_value(json!({"config-version": 8,
+        "server": {"host": "127.0.0.1", "port": port},
+        "access": {"api-keys": ["client-test-key"]},
+        "management": {"disable-control-panel": true},
+        "oauth": {"auth-dir": r.0.join("oauth")},
+        "api-keys": {"claude": [{"name": "claude-1",
+            "base-url": format!("http://127.0.0.1:{}{BRIDGE_PATH}", free_port()),
+            "models": [{"name": "haiku", "alias": "claude-cli/haiku"}],
+            "keys": [{"api-key": "stale-key"}]}]}}))
+    .unwrap();
+    let (_core, base) = start_core_with(&r, &service, port, document).await;
+    create_model_alias(&service, "claude-cli/haiku", "study-group", "high");
+    service.configure(&service.enabled_models()).unwrap();
+    wait_for_core_model(&r, &base, "study-group").await;
+
+    let response = core_json(
+        &base,
+        "/v1/messages",
+        &json!({"model": "study-group",
+        "max_tokens": 64, "messages": [{"role": "user", "content": "What college?"}]}),
+    )
+    .await;
+    assert!(response.to_string().contains("Greendale."), "{response}");
+    let pid = process_ids(&r).pop().unwrap();
+    let arguments = r.read(&format!("args.{pid}"));
+    let arguments: Vec<_> = arguments.lines().collect();
+    for (flag, want) in [("--model", "haiku"), ("--effort", "high")] {
+        let at = arguments.iter().position(|arg| *arg == flag).unwrap();
+        assert_eq!(arguments[at + 1], want, "{flag}");
+    }
+    let content = fs::read_to_string(&service.config_path).unwrap();
+    let aliases = crate::thinking_aliases_from_yaml(&content).unwrap();
+    assert!(
+        aliases
+            .iter()
+            .any(|entry| entry.alias == "study-group" && entry.effort.as_deref() == Some("high")),
+        "{content}"
+    );
     service.disconnect().unwrap();
 }
 

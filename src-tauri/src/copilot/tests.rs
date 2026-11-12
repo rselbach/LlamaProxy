@@ -91,6 +91,53 @@ fn routes_are_idempotent_namespaced_and_preserve_user_entries() {
 }
 
 #[test]
+fn v8_routes_use_provider_groups_and_preserve_user_groups() {
+    let mut config: serde_norway::Value = serde_norway::from_str("config-version: 8\napi-keys:\n  openai-compatibility:\n    - name: Greendale\n      base-url: https://example.com\n      models: []\n      keys: [{api-key: user-secret}]\n  codex:\n    - name: codex-1\n      keys: [{api-key: native-secret}]\n  claude: []\n").unwrap();
+    let original = config.clone();
+    let models = vec![
+        model("troy", Endpoint::Chat),
+        model("abed", Endpoint::Responses),
+        model("annie", Endpoint::Messages),
+    ];
+    let url = "http://127.0.0.1:4321/llamaproxy-copilot";
+    assert!(config::configure(&mut config, url, "local-key", &models).unwrap());
+    assert!(!config::configure(&mut config, url, "local-key", &models).unwrap());
+    let json: serde_json::Value = serde_norway::from_value(config.clone()).unwrap();
+    for section in ["openai-compatibility", "codex-api-key", "claude-api-key"] {
+        assert!(json.get(section).is_none(), "{json}");
+    }
+    let groups = &json["api-keys"];
+    let user_group: serde_json::Value =
+        serde_norway::from_value(original["api-keys"]["openai-compatibility"][0].clone()).unwrap();
+    assert_eq!(groups["openai-compatibility"][0], user_group);
+    assert_eq!(
+        groups["openai-compatibility"][1]["keys"],
+        json!([{"api-key": "local-key", "proxy-url": "direct"}])
+    );
+    assert_eq!(
+        groups["openai-compatibility"][1]["models"][0]["alias"],
+        "copilot/troy"
+    );
+    assert_eq!(groups["codex"][1]["base-url"], url);
+    assert_eq!(groups["codex"][1]["proxy-url"], "direct");
+    assert_eq!(
+        groups["codex"][1]["keys"],
+        json!([{"api-key": "local-key"}])
+    );
+    assert_eq!(
+        groups["claude"][0]["keys"],
+        json!([{"api-key": "local-key", "cloak": {"mode": "never"}}])
+    );
+    assert_eq!(groups["claude"][0]["models"][0]["alias"], "copilot/annie");
+
+    let new_url = "http://127.0.0.1:5678/llamaproxy-copilot";
+    assert!(config::configure(&mut config, new_url, "rotated-key", &models).unwrap());
+    assert_eq!(config["api-keys"]["codex"].as_sequence().unwrap().len(), 2);
+    assert!(config::configure(&mut config, new_url, "rotated-key", &[]).unwrap());
+    assert_eq!(config, original);
+}
+
+#[test]
 fn route_patch_preserves_yaml_comments_and_rejects_malformed_sections() {
     let source = "# Greendale configuration\nport: 11432 # private\nopenai-compatibility: []\n";
     let models = [model("troy", Endpoint::Chat)];

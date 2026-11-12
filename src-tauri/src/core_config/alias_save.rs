@@ -19,7 +19,8 @@ fn validate_alias_api_access_preserved(current: &str, updated: &str) -> Result<(
     {
         let without_models = |root: &serde_norway::Value| -> Result<_, String> {
             let mut value = root
-                .get(section)
+                .as_mapping()
+                .and_then(|root| core_section(root, section))
                 .cloned()
                 .unwrap_or(serde_norway::Value::Null);
             if value.is_null() {

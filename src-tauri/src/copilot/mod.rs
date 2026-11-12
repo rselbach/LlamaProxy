@@ -8,6 +8,8 @@ mod config;
 mod tests;
 mod transport;
 
+pub(crate) use config::is_default_route;
+
 use api::{Api, DeviceCode, Token};
 use serde::{Deserialize, Serialize};
 use std::{

@@ -1385,7 +1385,7 @@ pub(crate) fn mark_configured_agent_model_aliases(
         .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
 
     for section in MODEL_ALIAS_CONFIG_SECTIONS {
-        let Some(providers) = yaml_mapping_value(root, section) else {
+        let Some(providers) = core_section(root, section) else {
             continue;
         };
         let providers = providers
@@ -1408,7 +1408,7 @@ pub(crate) fn mark_configured_agent_model_aliases(
         }
     }
 
-    if let Some(oauth_aliases) = yaml_mapping_value(root, "oauth-model-alias") {
+    if let Some(oauth_aliases) = core_section(root, "oauth-model-alias") {
         let oauth_aliases = oauth_aliases
             .as_mapping()
             .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;

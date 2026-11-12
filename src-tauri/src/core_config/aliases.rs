@@ -281,8 +281,7 @@ pub(crate) fn management_alias_config_changes(
         let root = document
             .as_mapping_mut()
             .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
-        let oauth_aliases = root
-            .remove(yaml_key("oauth-model-alias"))
+        let oauth_aliases = remove_core_section(root, "oauth-model-alias")
             .unwrap_or_else(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()));
         Ok::<_, String>((document, oauth_aliases))
     };
@@ -399,7 +398,7 @@ pub(crate) fn remove_managed_claude_model_alias(
 ) -> Result<bool, String> {
     let mut changed = false;
     for section in MODEL_ALIAS_CONFIG_SECTIONS {
-        let Some(providers) = yaml_mapping_value_mut(root, section) else {
+        let Some(providers) = core_section_mut(root, section) else {
             continue;
         };
         let providers = providers
@@ -430,7 +429,7 @@ pub(crate) fn remove_existing_claude_model_alias(
 ) -> Result<bool, String> {
     let mut changed = false;
     for section in MODEL_ALIAS_CONFIG_SECTIONS {
-        let Some(providers) = yaml_mapping_value_mut(root, section) else {
+        let Some(providers) = core_section_mut(root, section) else {
             continue;
         };
         let providers = providers
@@ -463,7 +462,7 @@ pub(crate) fn remove_oauth_claude_model_alias(
     alias: &str,
     managed_only: bool,
 ) -> Result<bool, String> {
-    let Some(oauth_aliases) = yaml_mapping_value_mut(root, "oauth-model-alias") else {
+    let Some(oauth_aliases) = core_section_mut(root, "oauth-model-alias") else {
         return Ok(false);
     };
     let oauth_aliases = oauth_aliases
@@ -497,7 +496,7 @@ pub(crate) fn remove_oauth_claude_model_alias(
     }
     let remove_oauth_section = changed && oauth_aliases.is_empty();
     if remove_oauth_section {
-        root.remove(yaml_key("oauth-model-alias"));
+        remove_core_section(root, "oauth-model-alias");
     }
     Ok(changed)
 }
@@ -538,7 +537,7 @@ pub(crate) fn configured_managed_claude_alias_matches(
                 .is_some_and(|(source, _, _)| source.eq_ignore_ascii_case(source_model))
     };
     let configured_provider_alias = MODEL_ALIAS_CONFIG_SECTIONS.iter().any(|section| {
-        yaml_mapping_value(root, section)
+        core_section(root, section)
             .and_then(serde_norway::Value::as_sequence)
             .into_iter()
             .flatten()
@@ -552,7 +551,7 @@ pub(crate) fn configured_managed_claude_alias_matches(
             .any(matches)
     });
     configured_provider_alias
-        || yaml_mapping_value(root, "oauth-model-alias")
+        || core_section(root, "oauth-model-alias")
             .and_then(serde_norway::Value::as_mapping)
             .into_iter()
             .flat_map(|channels| channels.values())
@@ -604,7 +603,7 @@ pub(crate) fn configured_model_client_identity(
 ) -> Option<(String, String)> {
     for section in MODEL_ALIAS_CONFIG_SECTIONS {
         let Some(providers) =
-            yaml_mapping_value(root, section).and_then(serde_norway::Value::as_sequence)
+            core_section(root, section).and_then(serde_norway::Value::as_sequence)
         else {
             continue;
         };
@@ -629,7 +628,7 @@ pub(crate) fn configured_model_client_identity(
         }
     }
     if let Some(oauth_aliases) =
-        yaml_mapping_value(root, "oauth-model-alias").and_then(serde_norway::Value::as_mapping)
+        core_section(root, "oauth-model-alias").and_then(serde_norway::Value::as_mapping)
     {
         for entries in oauth_aliases
             .values()
@@ -679,7 +678,7 @@ fn resolve_claude_desktop_alias_source(
             Some(model)
         };
         for section in MODEL_ALIAS_CONFIG_SECTIONS {
-            let Some(providers) = yaml_mapping_value(root, section) else {
+            let Some(providers) = core_section(root, section) else {
                 continue;
             };
             let providers = providers
@@ -708,7 +707,7 @@ fn resolve_claude_desktop_alias_source(
             }
         }
         if let Some(channels) =
-            yaml_mapping_value(root, "oauth-model-alias").and_then(serde_norway::Value::as_mapping)
+            core_section(root, "oauth-model-alias").and_then(serde_norway::Value::as_mapping)
         {
             for (channel, models) in channels {
                 let (Some(channel), Some(models)) = (channel.as_str(), models.as_sequence()) else {
@@ -737,7 +736,7 @@ fn append_claude_desktop_model_alias(
             provider_index,
             model,
         } => {
-            let models = yaml_mapping_value_mut(root, section)
+            let models = core_section_mut(root, section)
                 .and_then(serde_norway::Value::as_sequence_mut)
                 .and_then(|providers| providers.get_mut(provider_index))
                 .and_then(serde_norway::Value::as_mapping_mut)
@@ -747,11 +746,13 @@ fn append_claude_desktop_model_alias(
             (models, model)
         }
         ClaudeDesktopAliasSource::OAuth { channel, mut model } => {
-            let aliases = root
-                .entry(yaml_key("oauth-model-alias"))
-                .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
-                .as_mapping_mut()
-                .ok_or("oauth-model-alias must be a YAML mapping")?;
+            let aliases = core_section_entry(
+                root,
+                "oauth-model-alias",
+                serde_norway::Value::Mapping(serde_norway::Mapping::new()),
+            )?
+            .as_mapping_mut()
+            .ok_or("oauth-model-alias must be a YAML mapping")?;
             let models = aliases
                 .entry(yaml_key(&channel))
                 .or_insert_with(|| serde_norway::Value::Sequence(Vec::new()))
@@ -785,11 +786,13 @@ pub(crate) fn append_managed_oauth_model_alias(
     alias: &str,
     force_mapping: bool,
 ) -> Result<(), String> {
-    let oauth_aliases = root
-        .entry(yaml_key("oauth-model-alias"))
-        .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
-        .as_mapping_mut()
-        .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;
+    let oauth_aliases = core_section_entry(
+        root,
+        "oauth-model-alias",
+        serde_norway::Value::Mapping(serde_norway::Mapping::new()),
+    )?
+    .as_mapping_mut()
+    .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;
     let channel_aliases = oauth_aliases
         .entry(yaml_key(channel))
         .or_insert_with(|| serde_norway::Value::Sequence(Vec::new()))
@@ -1054,7 +1057,7 @@ pub(crate) fn collect_config_thinking_alias_sources(
     available_models: &[AgentModelOption],
     sources: &mut Vec<ResolvedThinkingAliasSource>,
 ) -> Result<(), String> {
-    let Some(providers) = yaml_mapping_value(root, section) else {
+    let Some(providers) = core_section(root, section) else {
         return Ok(());
     };
     let providers = providers
@@ -1209,7 +1212,7 @@ pub(crate) fn thinking_aliases_from_value(
         .as_mapping()
         .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
     let mut entries = Vec::new();
-    if let Some(oauth_aliases) = yaml_mapping_value(root, "oauth-model-alias") {
+    if let Some(oauth_aliases) = core_section(root, "oauth-model-alias") {
         let oauth_aliases = oauth_aliases
             .as_mapping()
             .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;
@@ -1306,7 +1309,7 @@ pub(crate) fn speed_aliases_from_value(
         .as_mapping()
         .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
     let mut entries = Vec::new();
-    if let Some(oauth_aliases) = yaml_mapping_value(root, "oauth-model-alias") {
+    if let Some(oauth_aliases) = core_section(root, "oauth-model-alias") {
         let oauth_aliases = oauth_aliases
             .as_mapping()
             .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;
@@ -1386,14 +1389,14 @@ pub(crate) fn collect_config_thinking_alias_entries(
     protocol: &str,
     entries: &mut Vec<ThinkingAliasEntry>,
 ) -> Result<(), String> {
-    let Some(providers) = yaml_mapping_value(root, section) else {
+    let Some(providers) = core_section(root, section) else {
         return Ok(());
     };
     let providers = providers
         .as_sequence()
         .ok_or_else(|| format!("{section} must be an array"))?;
-    for (provider_index, provider) in providers.iter().enumerate() {
-        let Some(provider) = provider.as_mapping() else {
+    for (provider_index, group) in providers.iter().enumerate() {
+        let Some(provider) = group.as_mapping() else {
             continue;
         };
         let provider_name =
@@ -1408,7 +1411,10 @@ pub(crate) fn collect_config_thinking_alias_entries(
             let Some((source_model, alias, _)) = configured_model_identity(model) else {
                 continue;
             };
-            if source_model == alias {
+            if source_model == alias
+                || crate::claude_cli::is_default_route(group, &source_model, &alias)
+                || crate::copilot::is_default_route(group, &source_model, &alias)
+            {
                 continue;
             }
             let effort = find_thinking_alias_effort(root, &alias, protocol);
@@ -1436,7 +1442,7 @@ pub(crate) fn collect_config_speed_alias_entries(
     protocol: &str,
     entries: &mut Vec<SpeedAliasEntry>,
 ) -> Result<(), String> {
-    let Some(providers) = yaml_mapping_value(root, section) else {
+    let Some(providers) = core_section(root, section) else {
         return Ok(());
     };
     let providers = providers
@@ -1485,7 +1491,9 @@ fn alias_override_params<'a>(
     ["override-raw", "override"]
         .into_iter()
         .flat_map(move |section| {
-            nested_yaml_value(root, &["payload", section])
+            core_section(root, "payload")
+                .and_then(serde_norway::Value::as_mapping)
+                .and_then(|payload| yaml_mapping_value(payload, section))
                 .and_then(serde_norway::Value::as_sequence)
                 .into_iter()
                 .flatten()
@@ -1742,11 +1750,13 @@ pub(crate) fn append_alias_payload_override(
     if params_mapping.is_empty() {
         return Ok(());
     }
-    let payload = root
-        .entry(yaml_key("payload"))
-        .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
-        .as_mapping_mut()
-        .ok_or_else(|| "payload must be a YAML mapping".to_string())?;
+    let payload = core_section_entry(
+        root,
+        "payload",
+        serde_norway::Value::Mapping(serde_norway::Mapping::new()),
+    )?
+    .as_mapping_mut()
+    .ok_or_else(|| "payload must be a YAML mapping".to_string())?;
     let override_rules = payload
         .entry(yaml_key("override"))
         .or_insert_with(|| serde_norway::Value::Sequence(Vec::new()))
@@ -1838,11 +1848,13 @@ pub(crate) fn append_oauth_model_alias(
     alias: &str,
     force_mapping: bool,
 ) -> Result<(), String> {
-    let oauth_aliases = root
-        .entry(yaml_key("oauth-model-alias"))
-        .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
-        .as_mapping_mut()
-        .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;
+    let oauth_aliases = core_section_entry(
+        root,
+        "oauth-model-alias",
+        serde_norway::Value::Mapping(serde_norway::Mapping::new()),
+    )?
+    .as_mapping_mut()
+    .ok_or_else(|| "oauth-model-alias must be a YAML mapping".to_string())?;
     let channel_aliases = oauth_aliases
         .entry(yaml_key(channel))
         .or_insert_with(|| serde_norway::Value::Sequence(Vec::new()))
@@ -1874,7 +1886,7 @@ pub(crate) fn append_config_thinking_alias(
     alias: &str,
     effort: &str,
 ) -> Result<(), String> {
-    let providers = yaml_mapping_value_mut(root, section)
+    let providers = core_section_mut(root, section)
         .and_then(serde_norway::Value::as_sequence_mut)
         .ok_or_else(|| format!("{section} must be an array"))?;
     let provider = providers
@@ -1930,7 +1942,7 @@ pub(crate) fn append_config_speed_alias(
     expected_model: &str,
     alias: &str,
 ) -> Result<(), String> {
-    let providers = yaml_mapping_value_mut(root, section)
+    let providers = core_section_mut(root, section)
         .and_then(serde_norway::Value::as_sequence_mut)
         .ok_or_else(|| format!("{section} must be an array"))?;
     let provider = providers
@@ -2048,7 +2060,7 @@ pub(crate) fn remove_oauth_model_alias(
     alias: &str,
     target_channel: Option<&str>,
 ) -> Result<bool, String> {
-    let Some(oauth_aliases) = yaml_mapping_value_mut(root, "oauth-model-alias") else {
+    let Some(oauth_aliases) = core_section_mut(root, "oauth-model-alias") else {
         return Ok(false);
     };
     let oauth_aliases = oauth_aliases
@@ -2082,13 +2094,13 @@ pub(crate) fn remove_oauth_model_alias(
     }
     let remove_section = oauth_aliases.is_empty();
     if remove_section {
-        root.remove(yaml_key("oauth-model-alias"));
+        remove_core_section(root, "oauth-model-alias");
     }
     Ok(removed)
 }
 
 pub(crate) fn configured_model_alias_exists(root: &serde_norway::Mapping, alias: &str) -> bool {
-    let oauth_exists = yaml_mapping_value(root, "oauth-model-alias")
+    let oauth_exists = core_section(root, "oauth-model-alias")
         .and_then(serde_norway::Value::as_mapping)
         .is_some_and(|channels| {
             channels.values().any(|entries| {
@@ -2106,7 +2118,7 @@ pub(crate) fn configured_model_alias_exists(root: &serde_norway::Mapping, alias:
     oauth_exists
         || MODEL_ALIAS_CONFIG_SECTIONS
             .into_iter()
-            .filter_map(|section| yaml_mapping_value(root, section))
+            .filter_map(|section| core_section(root, section))
             .filter_map(serde_norway::Value::as_sequence)
             .flatten()
             .filter_map(serde_norway::Value::as_mapping)
@@ -2122,7 +2134,7 @@ pub(crate) fn remove_config_model_alias(
     section: &str,
     alias: &str,
 ) -> Result<bool, String> {
-    let Some(providers) = yaml_mapping_value_mut(root, section) else {
+    let Some(providers) = core_section_mut(root, section) else {
         return Ok(false);
     };
     let providers = providers
@@ -2161,7 +2173,7 @@ pub(crate) fn remove_config_speed_alias(
     if find_speed_alias_service_tier(root, alias, protocol).is_none() {
         return Ok(false);
     }
-    let Some(providers) = yaml_mapping_value_mut(root, section) else {
+    let Some(providers) = core_section_mut(root, section) else {
         return Ok(false);
     };
     let providers = providers
@@ -2207,7 +2219,7 @@ impl AliasPayloadScope {
     fn after_removal(root: &serde_norway::Mapping, alias: &str, channel: Option<&str>) -> Self {
         let mut preserved_protocols = BTreeSet::new();
         if let Some(channels) =
-            yaml_mapping_value(root, "oauth-model-alias").and_then(serde_norway::Value::as_mapping)
+            core_section(root, "oauth-model-alias").and_then(serde_norway::Value::as_mapping)
         {
             for (channel, entries) in channels {
                 let matches = entries.as_sequence().is_some_and(|entries| {
@@ -2232,7 +2244,7 @@ impl AliasPayloadScope {
             ("claude-api-key", "claude"),
             ("gemini-api-key", "gemini"),
         ] {
-            let matches = yaml_mapping_value(root, section)
+            let matches = core_section(root, section)
                 .and_then(serde_norway::Value::as_sequence)
                 .into_iter()
                 .flatten()
@@ -2282,7 +2294,7 @@ fn remove_alias_payload_options(
     alias: &str,
     scope: &AliasPayloadScope,
 ) -> Result<(), String> {
-    let Some(payload) = yaml_mapping_value_mut(root, "payload") else {
+    let Some(payload) = core_section_mut(root, "payload") else {
         return Ok(());
     };
     let payload = payload
@@ -2351,7 +2363,7 @@ fn remove_alias_payload_options(
         }
     }
     if payload.is_empty() {
-        root.remove(yaml_key("payload"));
+        remove_core_section(root, "payload");
     }
     Ok(())
 }

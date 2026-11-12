@@ -8,6 +8,8 @@ mod http;
 mod tests;
 mod transport;
 
+pub(crate) use config::is_default_route;
+
 use serde::{Deserialize, Serialize};
 use std::{
     fs,

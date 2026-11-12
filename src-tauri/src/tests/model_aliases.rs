@@ -699,3 +699,95 @@ fn edit_model_alias_rejects_missing_and_ambiguous_aliases() {
     let content = "oauth-model-alias:\n  codex:\n    - name: model-a\n      alias: shared\n  claude:\n    - name: model-b\n      alias: shared\n";
     assert!(resolve_model_alias_edit_source(content, "shared", &[]).is_err());
 }
+
+const V8_CLAUDE_CONFIG: &str = "config-version: 8\nrequests:\n    payload:\n        override:\n            - models:\n                - name: greendale\n                  protocol: claude\n              params:\n                thinking.type: adaptive\n                output_config.effort: high\napi-keys:\n    claude:\n        - name: claude-1\n          base-url: http://127.0.0.1:4321/llamaproxy-claude-cli\n          models:\n            - name: opus\n              alias: claude-cli/opus\n              thinking:\n                levels: [low, high]\n            - name: opus\n              alias: greendale\n              thinking:\n                levels: [low, high]\n          keys:\n            - api-key: troy-key\n";
+
+#[test]
+fn v8_configs_list_create_and_remove_provider_aliases_at_their_v8_paths() {
+    let r = |content: &str| serde_norway::from_str::<serde_norway::Value>(content).unwrap();
+    let aliases = thinking_aliases_from_yaml(V8_CLAUDE_CONFIG).unwrap();
+    let greendale = aliases
+        .iter()
+        .find(|entry| entry.alias == "greendale")
+        .unwrap();
+    assert_eq!(greendale.source_model, "opus");
+    assert_eq!(greendale.effort.as_deref(), Some("high"));
+
+    let available_models = test_agent_models(&["claude-cli/opus"]);
+    let sources = resolved_oauth_alias_sources(
+        V8_CLAUDE_CONFIG,
+        &[],
+        &available_models,
+        AliasSourceCapability::Reasoning,
+    )
+    .unwrap();
+    let opus = sources
+        .iter()
+        .find(|source| source.source.model == "claude-cli/opus")
+        .unwrap();
+    assert_eq!(opus.source.reasoning_levels, ["low", "high"]);
+
+    let created =
+        add_model_alias_to_yaml(V8_CLAUDE_CONFIG, opus, "study-group", "low", false).unwrap();
+    let document = r(&created);
+    assert!(document.get("claude-api-key").is_none(), "{created}");
+    assert!(document.get("payload").is_none(), "{created}");
+    let models = document["api-keys"]["claude"][0]["models"]
+        .as_sequence()
+        .unwrap();
+    assert!(
+        models.iter().any(|model| model["alias"] == "study-group"),
+        "{created}"
+    );
+    assert_eq!(
+        document["api-keys"]["claude"][0]["keys"][0]["api-key"],
+        "troy-key"
+    );
+    let created_aliases = thinking_aliases_from_yaml(&created).unwrap();
+    let study_group = created_aliases
+        .iter()
+        .find(|entry| entry.alias == "study-group")
+        .unwrap();
+    assert_eq!(study_group.effort.as_deref(), Some("low"));
+
+    let removed = remove_thinking_alias_from_yaml(&created, "greendale").unwrap();
+    let remaining = thinking_aliases_from_yaml(&removed).unwrap();
+    assert!(
+        !remaining.iter().any(|entry| entry.alias == "greendale"),
+        "{removed}"
+    );
+    assert!(
+        remaining.iter().any(|entry| entry.alias == "study-group"),
+        "{removed}"
+    );
+    let overrides = r(&removed)["requests"]["payload"]["override"]
+        .as_sequence()
+        .unwrap()
+        .len();
+    assert_eq!(overrides, 1, "{removed}");
+}
+
+#[test]
+fn provider_default_routes_are_sources_but_not_listed_as_aliases() {
+    let content = "config-version: 8\napi-keys:\n  claude:\n    - base-url: http://127.0.0.1:4321/llamaproxy-claude-cli\n      models:\n        - {name: opus, alias: claude-cli/opus}\n        - {name: opus, alias: greendale}\n      keys: [{api-key: troy-key}]\n    - base-url: https://example.test\n      models:\n        - {name: opus, alias: claude-cli/opus-native}\n        - {name: sonnet, alias: claude-cli/sonnet}\n      keys: [{api-key: abed-key}]\n  openai-compatibility:\n    - name: GitHub Copilot\n      base-url: http://127.0.0.1:5678/llamaproxy-copilot\n      models:\n        - {name: gpt-5, alias: copilot/gpt-5}\n        - {name: gpt-5, alias: study-group}\n      keys: [{api-key: annie-key}]\n";
+    let mut aliases: Vec<_> = thinking_aliases_from_yaml(content)
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.alias)
+        .collect();
+    aliases.sort();
+    assert_eq!(
+        aliases,
+        ["claude-cli/opus-native", "claude-cli/sonnet", "greendale", "study-group"]
+    );
+    let sources = resolved_oauth_alias_sources(
+        content,
+        &[],
+        &test_agent_models(&["claude-cli/opus", "copilot/gpt-5"]),
+        AliasSourceCapability::Base,
+    )
+    .unwrap();
+    for model in ["claude-cli/opus", "copilot/gpt-5"] {
+        assert!(sources.iter().any(|source| source.source.model == model), "{model}");
+    }
+}

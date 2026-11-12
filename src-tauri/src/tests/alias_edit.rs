@@ -307,3 +307,20 @@ fn alias_edit_does_not_change_implicit_or_explicit_oauth_routing_flags() {
         }
     }
 }
+
+#[test]
+fn alias_edit_renames_and_changes_effort_at_v8_paths() {
+    let content = "config-version: 8\nrequests:\n  payload:\n    override:\n      - models: [{name: greendale, protocol: claude}]\n        params: {thinking.type: adaptive, output_config.effort: high}\napi-keys:\n  claude:\n    - name: claude-1\n      base-url: http://127.0.0.1:4321/llamaproxy-claude-cli\n      models:\n        - {name: opus, alias: greendale, thinking: {levels: [low, high]}}\n      keys: [{api-key: troy-key}]\n";
+    let updated = edit(content, "greendale", "study-group", "low", false);
+    let after = value(&updated);
+    assert!(after.get("payload").is_none(), "{updated}");
+    assert!(after.get("claude-api-key").is_none(), "{updated}");
+    assert_eq!(
+        after["api-keys"]["claude"][0]["models"][0]["alias"],
+        "study-group"
+    );
+    let rules = after["requests"]["payload"]["override"].as_array().unwrap();
+    assert_eq!(rules.len(), 1, "{updated}");
+    assert_eq!(rules[0]["models"][0]["name"], "study-group");
+    assert_eq!(rules[0]["params"]["output_config.effort"], "low");
+}

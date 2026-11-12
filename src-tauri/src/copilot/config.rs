@@ -3,6 +3,8 @@ use serde_json::json;
 use serde_norway::Value;
 use std::{fs, path::Path};
 
+const MODEL_PREFIX: &str = "copilot/";
+
 pub(super) fn write(
     path: &Path,
     base_url: &str,
@@ -52,6 +54,12 @@ fn managed(entry: &Value) -> bool {
         })
 }
 
+// A route this provider writes for one of its models, as opposed to an alias
+// the user added to its group.
+pub(crate) fn is_default_route(group: &Value, model: &str, alias: &str) -> bool {
+    managed(group) && alias == format!("{MODEL_PREFIX}{model}")
+}
+
 pub(super) fn configure(
     document: &mut Value,
     base_url: &str,
@@ -67,8 +75,7 @@ pub(super) fn configure(
         ("codex-api-key", Endpoint::Responses),
         ("claude-api-key", Endpoint::Messages),
     ] {
-        let section_key = Value::String(section.to_string());
-        let previous = mapping.get(&section_key);
+        let previous = crate::core_section(mapping, section);
         let mut entries = match previous {
             Some(Value::Sequence(entries)) => entries.clone(),
             Some(Value::Null) | None => Vec::new(),
@@ -78,7 +85,7 @@ pub(super) fn configure(
         let selected: Vec<_> = models
             .iter()
             .filter(|m| m.endpoint == endpoint)
-            .map(|m| json!({"name": m.id, "alias": format!("copilot/{}", m.id)}))
+            .map(|m| json!({"name": m.id, "alias": format!("{MODEL_PREFIX}{}", m.id)}))
             .collect();
         if !selected.is_empty() {
             // Explicit aliases (rather than prefix) prevent the core from also
@@ -91,16 +98,15 @@ pub(super) fn configure(
                 Endpoint::Messages => json!({"base-url": base_url, "api-key": key,
                     "proxy-url": "direct", "cloak": {"mode": "never"}, "models": selected}),
             };
-            entries.push(
-                serde_norway::to_value(entry)
-                    .map_err(|e| format!("Could not configure Copilot routes: {e}"))?,
-            );
+            let entry = serde_norway::to_value(entry)
+                .map_err(|e| format!("Could not configure Copilot routes: {e}"))?;
+            entries.push(crate::core_provider_entry(mapping, section, entry)?);
         }
         let next = Value::Sequence(entries);
         if previous != Some(&next)
             && (previous.is_some() || next.as_sequence().is_some_and(|v| !v.is_empty()))
         {
-            mapping.insert(section_key, next);
+            *crate::core_section_entry(mapping, section, Value::Null)? = next;
             changed = true;
         }
     }

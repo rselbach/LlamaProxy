@@ -49,6 +49,12 @@ fn managed(entry: &Value) -> bool {
         })
 }
 
+// A route this provider writes for one of its models, as opposed to an alias
+// the user added to its group.
+pub(crate) fn is_default_route(group: &Value, model: &str, alias: &str) -> bool {
+    managed(group) && alias == format!("{MODEL_PREFIX}{model}")
+}
+
 pub(super) fn configure(
     document: &mut Value,
     base_url: &str,
@@ -58,8 +64,7 @@ pub(super) fn configure(
     let mapping = document
         .as_mapping_mut()
         .ok_or_else(|| "Core configuration must be a mapping".to_string())?;
-    let section = Value::String(SECTION.to_string());
-    let previous = mapping.get(&section);
+    let previous = crate::core_section(mapping, SECTION);
     let mut entries = match previous {
         Some(Value::Sequence(entries)) => entries.clone(),
         Some(Value::Null) | None => Vec::new(),
@@ -97,15 +102,14 @@ pub(super) fn configure(
         // retry, and each attempt starts a Claude Code process.
         let entry = json!({"base-url": base_url, "api-key": key, "proxy-url": "direct",
             "request-retry": 0, "cloak": {"mode": "never"}, "models": models});
-        entries.push(
-            serde_norway::to_value(entry)
-                .map_err(|e| format!("Could not configure Claude CLI routes: {e}"))?,
-        );
+        let entry = serde_norway::to_value(entry)
+            .map_err(|e| format!("Could not configure Claude CLI routes: {e}"))?;
+        entries.push(crate::core_provider_entry(mapping, SECTION, entry)?);
     }
     let next = Value::Sequence(entries);
     if previous == Some(&next) || (previous.is_none() && models.is_empty()) {
         return Ok(false);
     }
-    mapping.insert(section, next);
+    *crate::core_section_entry(mapping, SECTION, Value::Null)? = next;
     Ok(true)
 }

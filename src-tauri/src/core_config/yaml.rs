@@ -1048,6 +1048,144 @@ pub(crate) fn core_config_value<'a>(
     nested_yaml_value(root, &core_config_path(root, legacy))
 }
 
+// Provider, payload, and OAuth alias sections as (legacy root, v8 path).
+// Mirrors v8KeyFamilies and the payload and oauth rows in the upstream
+// internal/config/config_v8.go. A v8 provider group keeps name, base-url, and
+// models where a legacy entry does, so model edits work on either shape.
+const CORE_SECTION_V8_PATHS: &[(&str, &[&str])] = &[
+    ("codex-api-key", &["api-keys", "codex"]),
+    ("claude-api-key", &["api-keys", "claude"]),
+    ("gemini-api-key", &["api-keys", "gemini"]),
+    ("vertex-api-key", &["api-keys", "vertex"]),
+    ("xai-api-key", &["api-keys", "xai"]),
+    ("interactions-api-key", &["api-keys", "interactions"]),
+    (
+        "openai-compatibility",
+        &["api-keys", "openai-compatibility"],
+    ),
+    ("payload", &["requests", "payload"]),
+    ("oauth-model-alias", &["oauth", "model-alias"]),
+    ("oauth-excluded-models", &["oauth", "excluded-models"]),
+];
+
+// A v8 core drops these legacy sections whenever their v8 path exists, so a
+// v8 document is read and edited only at the v8 paths.
+pub(crate) fn is_v8_core_config(root: &serde_norway::Mapping) -> bool {
+    yaml_mapping_value(root, "config-version").and_then(serde_norway::Value::as_u64) == Some(8)
+        || yaml_mapping_value(root, "api-keys").is_some_and(serde_norway::Value::is_mapping)
+}
+
+fn core_section_path<'a>(root: &serde_norway::Mapping, legacy: &'a str) -> Vec<&'a str> {
+    CORE_SECTION_V8_PATHS
+        .iter()
+        .find(|(old, _)| *old == legacy)
+        .filter(|_| is_v8_core_config(root))
+        .map(|(_, path)| path.to_vec())
+        .unwrap_or_else(|| vec![legacy])
+}
+
+pub(crate) fn core_section<'a>(
+    root: &'a serde_norway::Mapping,
+    legacy: &str,
+) -> Option<&'a serde_norway::Value> {
+    nested_yaml_value(root, &core_section_path(root, legacy))
+}
+
+pub(crate) fn core_section_mut<'a>(
+    root: &'a mut serde_norway::Mapping,
+    legacy: &str,
+) -> Option<&'a mut serde_norway::Value> {
+    let path = core_section_path(root, legacy);
+    let (first, rest) = path.split_first()?;
+    let mut value = yaml_mapping_value_mut(root, first)?;
+    for key in rest {
+        value = yaml_mapping_value_mut(value.as_mapping_mut()?, key)?;
+    }
+    Some(value)
+}
+
+pub(crate) fn core_section_entry<'a>(
+    root: &'a mut serde_norway::Mapping,
+    legacy: &str,
+    default: serde_norway::Value,
+) -> Result<&'a mut serde_norway::Value, String> {
+    let path = core_section_path(root, legacy);
+    let Some((leaf, parents)) = path.split_last() else {
+        return Err("Invalid core configuration path".to_string());
+    };
+    let mut mapping = root;
+    for section in parents {
+        mapping = mapping
+            .entry(yaml_key(section))
+            .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
+            .as_mapping_mut()
+            .ok_or_else(|| format!("{section} must be a YAML mapping"))?;
+    }
+    Ok(mapping.entry(yaml_key(leaf)).or_insert(default))
+}
+
+// Fields a v8 provider group holds itself; every other field of a legacy entry
+// belongs to its key. Mirrors groupLegacyKeys and sharedKeyFields upstream.
+const V8_GROUP_FIELDS: &[&str] = &[
+    "name",
+    "base-url",
+    "priority",
+    "prefix",
+    "proxy-url",
+    "headers",
+    "models",
+    "excluded-models",
+    "disable-cooling",
+    "request-retry",
+    "request-scoped-errors",
+    "connection-pool",
+];
+
+// Returns a legacy provider entry in the shape its section takes in `root`.
+pub(crate) fn core_provider_entry(
+    root: &serde_norway::Mapping,
+    legacy: &str,
+    entry: serde_norway::Value,
+) -> Result<serde_norway::Value, String> {
+    if !is_v8_core_config(root) {
+        return Ok(entry);
+    }
+    let serde_norway::Value::Mapping(mut key) = entry else {
+        return Err(format!("{legacy} entry must be a YAML mapping"));
+    };
+    if legacy == "openai-compatibility" {
+        let keys = key
+            .remove(yaml_key("api-key-entries"))
+            .unwrap_or(serde_norway::Value::Sequence(Vec::new()));
+        key.insert(yaml_key("keys"), keys);
+        return Ok(serde_norway::Value::Mapping(key));
+    }
+    let mut group = serde_norway::Mapping::new();
+    for field in V8_GROUP_FIELDS {
+        if let Some(value) = key.remove(yaml_key(field)) {
+            group.insert(yaml_key(field), value);
+        }
+    }
+    group.insert(
+        yaml_key("keys"),
+        serde_norway::Value::Sequence(vec![serde_norway::Value::Mapping(key)]),
+    );
+    Ok(serde_norway::Value::Mapping(group))
+}
+
+pub(crate) fn remove_core_section(
+    root: &mut serde_norway::Mapping,
+    legacy: &str,
+) -> Option<serde_norway::Value> {
+    let path = core_section_path(root, legacy);
+    let (leaf, parents) = path.split_last()?;
+    let mut mapping = root;
+    for section in parents {
+        mapping = yaml_mapping_value_mut(mapping, section)?.as_mapping_mut()?;
+    }
+    mapping.remove(yaml_key(leaf))
+}
+
 fn set_yaml_mapping_path(
     root: &mut serde_norway::Mapping,
     path: &[&str],

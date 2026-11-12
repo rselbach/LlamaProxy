@@ -88,7 +88,7 @@ fn editable_model_alias(
         ("claude-api-key", "Claude API", "claude-api", "claude"),
         ("gemini-api-key", "Gemini API", "gemini-api", "gemini"),
     ] {
-        let Some(providers) = yaml_mapping_value(root, section) else {
+        let Some(providers) = core_section(root, section) else {
             continue;
         };
         let providers = providers
@@ -139,7 +139,7 @@ fn editable_model_alias(
             }
         }
     }
-    if let Some(channels) = yaml_mapping_value(root, "oauth-model-alias") {
+    if let Some(channels) = core_section(root, "oauth-model-alias") {
         let channels = channels
             .as_mapping()
             .ok_or("oauth-model-alias must be a YAML mapping")?;
@@ -250,7 +250,7 @@ pub(crate) fn edit_model_alias_in_yaml(
             provider_index,
             model_index,
         } => {
-            let model = yaml_mapping_value(root, section)
+            let model = core_section(root, section)
                 .and_then(serde_norway::Value::as_sequence)
                 .and_then(|providers| providers.get(*provider_index))
                 .and_then(serde_norway::Value::as_mapping)
@@ -357,22 +357,24 @@ pub(crate) fn edit_model_alias_in_yaml(
             section,
             provider_index,
             ..
-        } => yaml_mapping_value_mut(root, section)
+        } => core_section_mut(root, section)
             .and_then(serde_norway::Value::as_sequence_mut)
             .and_then(|providers| providers.get_mut(*provider_index))
             .and_then(serde_norway::Value::as_mapping_mut)
             .and_then(|provider| yaml_mapping_value_mut(provider, "models"))
             .and_then(serde_norway::Value::as_sequence_mut)
             .ok_or("The model provider changed; refresh and retry")?,
-        ThinkingAliasSourceLocation::Oauth { channel, .. } => root
-            .entry(yaml_key("oauth-model-alias"))
-            .or_insert_with(|| serde_norway::Value::Mapping(Default::default()))
-            .as_mapping_mut()
-            .ok_or("oauth-model-alias must be a YAML mapping")?
-            .entry(yaml_key(channel))
-            .or_insert_with(|| serde_norway::Value::Sequence(Vec::new()))
-            .as_sequence_mut()
-            .ok_or("oauth-model-alias channel configuration must be an array")?,
+        ThinkingAliasSourceLocation::Oauth { channel, .. } => core_section_entry(
+            root,
+            "oauth-model-alias",
+            serde_norway::Value::Mapping(serde_norway::Mapping::new()),
+        )?
+        .as_mapping_mut()
+        .ok_or("oauth-model-alias must be a YAML mapping")?
+        .entry(yaml_key(channel))
+        .or_insert_with(|| serde_norway::Value::Sequence(Vec::new()))
+        .as_sequence_mut()
+        .ok_or("oauth-model-alias channel configuration must be an array")?,
     };
     if same_group {
         let model = models
@@ -437,9 +439,11 @@ fn edit_alias_payload(
     let protocol = &edit.source.protocol;
     let mut found_effort = false;
     let mut found_fast = false;
-    let payload = root
-        .entry(yaml_key("payload"))
-        .or_insert_with(|| serde_norway::Value::Mapping(Default::default()));
+    let payload = core_section_entry(
+        root,
+        "payload",
+        serde_norway::Value::Mapping(serde_norway::Mapping::new()),
+    )?;
     let payload = payload
         .as_mapping_mut()
         .ok_or("payload must be a YAML mapping")?;
@@ -565,7 +569,7 @@ fn edit_alias_payload(
         }
     }
     if payload.is_empty() {
-        root.remove(yaml_key("payload"));
+        remove_core_section(root, "payload");
     }
     let mut params = serde_norway::Mapping::new();
     if edit.change_effort && !found_effort && !edit.effort.is_empty() {
