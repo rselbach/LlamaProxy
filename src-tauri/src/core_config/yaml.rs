@@ -158,9 +158,7 @@ pub(crate) fn core_tls_settings_from_value(
     let root = document
         .as_mapping()
         .ok_or_else(|| "Core configuration must be a YAML mapping".to_string())?;
-    let tls = yaml_mapping_value(root, "tls").and_then(serde_norway::Value::as_mapping);
-    let enabled = tls
-        .and_then(|mapping| yaml_mapping_value(mapping, "enable"))
+    let enabled = core_config_value(root, &["tls", "enable"])
         .map(|value| {
             value
                 .as_bool()
@@ -169,7 +167,7 @@ pub(crate) fn core_tls_settings_from_value(
         .transpose()?
         .unwrap_or(false);
     let string_value = |key: &str| -> Result<String, String> {
-        tls.and_then(|mapping| yaml_mapping_value(mapping, key))
+        core_config_value(root, &["tls", key])
             .map(|value| {
                 value
                     .as_str()
@@ -989,20 +987,109 @@ pub(crate) fn yaml_edit_node_from_value(
         .ok_or_else(|| "Unable to construct core configuration value".to_string())
 }
 
-pub(crate) fn set_core_yaml_top_level_value(
+// GUI-managed legacy root keys that CLIProxyAPI v8 moved, as (legacy, v8)
+// dotted paths. Mirrors the upstream table in internal/config/config_v8.go.
+const CORE_CONFIG_V8_ROOTS: &[(&str, &str)] = &[
+    ("host", "server.host"),
+    ("port", "server.port"),
+    ("tls", "server.tls"),
+    ("commercial-mode", "server.commercial-mode"),
+    ("remote-management", "management"),
+    ("api-keys", "access.api-keys"),
+    ("request-retry", "routing.retry.request-retry"),
+    (
+        "max-retry-credentials",
+        "routing.retry.max-retry-credentials",
+    ),
+    ("max-retry-interval", "routing.retry.max-retry-interval"),
+    ("disable-cooling", "routing.cooldown.disable-cooling"),
+    ("proxy-url", "requests.proxy-url"),
+    ("streaming", "requests.streaming"),
+    ("auth-dir", "oauth.auth-dir"),
+    ("debug", "observability.logs.debug"),
+    ("logging-to-file", "observability.logs.logging-to-file"),
+    (
+        "logs-max-total-size-mb",
+        "observability.logs.logs-max-total-size-mb",
+    ),
+    ("request-log", "observability.logs.request-log"),
+    (
+        "error-logs-max-files",
+        "observability.logs.error-logs-max-files",
+    ),
+    (
+        "usage-statistics-enabled",
+        "observability.usage.usage-statistics-enabled",
+    ),
+    (
+        "redis-usage-queue-retention-seconds",
+        "observability.usage.redis-usage-queue-retention-seconds",
+    ),
+];
+
+fn v8_core_config_path<'a>(legacy: &[&'a str]) -> Option<Vec<&'a str>> {
+    let (root, rest) = legacy.split_first()?;
+    let (_, v8) = CORE_CONFIG_V8_ROOTS.iter().find(|(old, _)| old == root)?;
+    Some(v8.split('.').chain(rest.iter().copied()).collect())
+}
+
+// The core loads a present v8 field over its legacy spelling, so that is the
+// path to read and write; files for pre-v8 cores never contain one.
+fn core_config_path<'a>(root: &serde_norway::Mapping, legacy: &[&'a str]) -> Vec<&'a str> {
+    v8_core_config_path(legacy)
+        .filter(|path| nested_yaml_value(root, path).is_some())
+        .unwrap_or_else(|| legacy.to_vec())
+}
+
+pub(crate) fn core_config_value<'a>(
+    root: &'a serde_norway::Mapping,
+    legacy: &[&str],
+) -> Option<&'a serde_norway::Value> {
+    nested_yaml_value(root, &core_config_path(root, legacy))
+}
+
+fn set_yaml_mapping_path(
+    root: &mut serde_norway::Mapping,
+    path: &[&str],
+    value: serde_norway::Value,
+) -> Result<bool, String> {
+    let Some((leaf, parents)) = path.split_last() else {
+        return Err("Invalid core configuration path".to_string());
+    };
+    let mut mapping = root;
+    for section in parents {
+        mapping = mapping
+            .entry(yaml_key(section))
+            .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
+            .as_mapping_mut()
+            .ok_or_else(|| "Core configuration section must be a YAML mapping".to_string())?;
+    }
+    let key = yaml_key(leaf);
+    if mapping.get(&key) == Some(&value) {
+        return Ok(false);
+    }
+    mapping.insert(key, value);
+    Ok(true)
+}
+
+fn set_core_yaml_value(
     document: &mut serde_norway::Value,
-    key: &str,
+    legacy: &[&str],
     value: serde_norway::Value,
 ) -> Result<bool, String> {
     let root = document
         .as_mapping_mut()
         .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
-    let key = yaml_key(key);
-    if root.get(&key) == Some(&value) {
-        return Ok(false);
-    }
-    root.insert(key, value);
-    Ok(true)
+    let path = core_config_path(root, legacy);
+    set_yaml_mapping_path(root, &path, value)
+}
+
+pub(crate) fn set_core_yaml_top_level_value(
+    document: &mut serde_norway::Value,
+    key: &str,
+    value: serde_norway::Value,
+) -> Result<bool, String> {
+    set_core_yaml_value(document, &[key], value)
 }
 
 pub(crate) fn set_core_yaml_nested_value(
@@ -1011,20 +1098,7 @@ pub(crate) fn set_core_yaml_nested_value(
     key: &str,
     value: serde_norway::Value,
 ) -> Result<bool, String> {
-    let root = document
-        .as_mapping_mut()
-        .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
-    let section = root
-        .entry(yaml_key(section))
-        .or_insert_with(|| serde_norway::Value::Mapping(serde_norway::Mapping::new()))
-        .as_mapping_mut()
-        .ok_or_else(|| "Core configuration section must be a YAML mapping".to_string())?;
-    let key = yaml_key(key);
-    if section.get(&key) == Some(&value) {
-        return Ok(false);
-    }
-    section.insert(key, value);
-    Ok(true)
+    set_core_yaml_value(document, &[section, key], value)
 }
 
 pub(crate) fn patch_core_api_keys_yaml(
@@ -1036,6 +1110,26 @@ pub(crate) fn patch_core_api_keys_yaml(
     let root = parsed
         .as_mapping()
         .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
+    // v8 keeps client keys in access.api-keys; a root api-keys mapping there
+    // holds upstream provider groups and must not be replaced.
+    if nested_yaml_value(root, &["access", "api-keys"]).is_some()
+        || yaml_mapping_value(root, "api-keys").is_some_and(serde_norway::Value::is_mapping)
+    {
+        let keys = serde_norway::Value::Sequence(
+            api_keys
+                .iter()
+                .cloned()
+                .map(serde_norway::Value::String)
+                .collect(),
+        );
+        let updated = patch_core_yaml_document(content, |document| {
+            let root = document
+                .as_mapping_mut()
+                .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
+            set_yaml_mapping_path(root, &["access", "api-keys"], keys)
+        })?;
+        return Ok(updated.unwrap_or_else(|| content.to_string()));
+    }
     let has_legacy_api_keys = nested_yaml_value(
         root,
         &["auth", "providers", "config-api-key", "api-key-entries"],
@@ -1220,7 +1314,7 @@ pub(crate) fn core_config_settings_from_value(
     let root = document
         .as_mapping()
         .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
-    let host = yaml_mapping_value(root, "host")
+    let host = core_config_value(root, &["host"])
         .map(|value| {
             value
                 .as_str()
@@ -1229,7 +1323,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or_else(|| "127.0.0.1".to_string());
-    let port = yaml_mapping_value(root, "port")
+    let port = core_config_value(root, &["port"])
         .map(|value| {
             value
                 .as_u64()
@@ -1239,7 +1333,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(11432);
-    let auth_dir = yaml_mapping_value(root, "auth-dir")
+    let auth_dir = core_config_value(root, &["auth-dir"])
         .map(|value| {
             value
                 .as_str()
@@ -1248,7 +1342,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or_else(|| OAUTH_DIR_NAME.to_string());
-    let debug = yaml_mapping_value(root, "debug")
+    let debug = core_config_value(root, &["debug"])
         .map(|value| {
             value
                 .as_bool()
@@ -1256,7 +1350,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(false);
-    let commercial_mode = yaml_mapping_value(root, "commercial-mode")
+    let commercial_mode = core_config_value(root, &["commercial-mode"])
         .map(|value| {
             value
                 .as_bool()
@@ -1264,7 +1358,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(false);
-    let logging_to_file = yaml_mapping_value(root, "logging-to-file")
+    let logging_to_file = core_config_value(root, &["logging-to-file"])
         .map(|value| {
             value
                 .as_bool()
@@ -1272,7 +1366,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(false);
-    let logs_max_total_size_mb = yaml_mapping_value(root, "logs-max-total-size-mb")
+    let logs_max_total_size_mb = core_config_value(root, &["logs-max-total-size-mb"])
         .map(|value| {
             value
                 .as_u64()
@@ -1281,7 +1375,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(DEFAULT_LOGS_MAX_TOTAL_SIZE_MB);
-    let error_logs_max_files = yaml_mapping_value(root, "error-logs-max-files")
+    let error_logs_max_files = core_config_value(root, &["error-logs-max-files"])
         .map(|value| {
             value
                 .as_u64()
@@ -1290,7 +1384,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(DEFAULT_ERROR_LOGS_MAX_FILES);
-    let usage_statistics_enabled = yaml_mapping_value(root, "usage-statistics-enabled")
+    let usage_statistics_enabled = core_config_value(root, &["usage-statistics-enabled"])
         .map(|value| {
             value
                 .as_bool()
@@ -1299,7 +1393,7 @@ pub(crate) fn core_config_settings_from_value(
         .transpose()?
         .unwrap_or(true);
     let redis_usage_queue_retention_seconds =
-        yaml_mapping_value(root, "redis-usage-queue-retention-seconds")
+        core_config_value(root, &["redis-usage-queue-retention-seconds"])
             .map(|value| {
                 value
                     .as_u64()
@@ -1316,7 +1410,7 @@ pub(crate) fn core_config_settings_from_value(
     } else {
         redis_usage_queue_retention_seconds.min(3600)
     };
-    let request_log = yaml_mapping_value(root, "request-log")
+    let request_log = core_config_value(root, &["request-log"])
         .map(|value| {
             value
                 .as_bool()
@@ -1329,7 +1423,7 @@ pub(crate) fn core_config_settings_from_value(
         .filter(|api_key| !is_example_core_api_key(api_key))
         .collect();
     let management_secret_key = extract_core_management_secret_key(root)?;
-    let plugins_enabled = nested_yaml_value(root, &["plugins", "enabled"])
+    let plugins_enabled = core_config_value(root, &["plugins", "enabled"])
         .map(|value| {
             value
                 .as_bool()
@@ -1337,7 +1431,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(false);
-    let routing_strategy = nested_yaml_value(root, &["routing", "strategy"])
+    let routing_strategy = core_config_value(root, &["routing", "strategy"])
         .map(|value| {
             value
                 .as_str()
@@ -1346,7 +1440,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or_else(|| "round-robin".to_string());
-    let proxy_url = yaml_mapping_value(root, "proxy-url")
+    let proxy_url = core_config_value(root, &["proxy-url"])
         .map(|value| {
             value
                 .as_str()
@@ -1355,8 +1449,8 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or_default();
-    let routing_session_affinity = nested_yaml_value(root, &["routing", "session-affinity"])
-        .or_else(|| nested_yaml_value(root, &["routing", "sessionAffinity"]))
+    let routing_session_affinity = core_config_value(root, &["routing", "session-affinity"])
+        .or_else(|| core_config_value(root, &["routing", "sessionAffinity"]))
         .map(|value| {
             value
                 .as_bool()
@@ -1365,8 +1459,8 @@ pub(crate) fn core_config_settings_from_value(
         .transpose()?
         .unwrap_or(false);
     let routing_session_affinity_ttl =
-        nested_yaml_value(root, &["routing", "session-affinity-ttl"])
-            .or_else(|| nested_yaml_value(root, &["routing", "sessionAffinityTTL"]))
+        core_config_value(root, &["routing", "session-affinity-ttl"])
+            .or_else(|| core_config_value(root, &["routing", "sessionAffinityTTL"]))
             .map(|value| {
                 value
                     .as_str()
@@ -1375,7 +1469,7 @@ pub(crate) fn core_config_settings_from_value(
             })
             .transpose()?
             .unwrap_or_default();
-    let disable_cooling = yaml_mapping_value(root, "disable-cooling")
+    let disable_cooling = core_config_value(root, &["disable-cooling"])
         .map(|value| {
             value
                 .as_bool()
@@ -1383,7 +1477,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(DEFAULT_DISABLE_COOLING);
-    let request_retry = yaml_mapping_value(root, "request-retry")
+    let request_retry = core_config_value(root, &["request-retry"])
         .map(|value| {
             value
                 .as_u64()
@@ -1392,7 +1486,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(DEFAULT_REQUEST_RETRY);
-    let max_retry_credentials = yaml_mapping_value(root, "max-retry-credentials")
+    let max_retry_credentials = core_config_value(root, &["max-retry-credentials"])
         .map(|value| {
             value
                 .as_u64()
@@ -1401,7 +1495,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(DEFAULT_MAX_RETRY_CREDENTIALS);
-    let max_retry_interval = yaml_mapping_value(root, "max-retry-interval")
+    let max_retry_interval = core_config_value(root, &["max-retry-interval"])
         .map(|value| {
             value
                 .as_u64()
@@ -1410,7 +1504,7 @@ pub(crate) fn core_config_settings_from_value(
         })
         .transpose()?
         .unwrap_or(DEFAULT_MAX_RETRY_INTERVAL);
-    let streaming_bootstrap_retries = nested_yaml_value(root, &["streaming", "bootstrap-retries"])
+    let streaming_bootstrap_retries = core_config_value(root, &["streaming", "bootstrap-retries"])
         .map(|value| {
             value
                 .as_u64()
@@ -1453,7 +1547,8 @@ pub(crate) fn core_config_settings_from_value(
 }
 
 pub(crate) fn extract_core_api_keys(root: &serde_norway::Mapping) -> Result<Vec<String>, String> {
-    if let Some(value) = yaml_mapping_value(root, "api-keys") {
+    if let Some(value) = core_config_value(root, &["api-keys"]).filter(|value| !value.is_mapping())
+    {
         return extract_api_key_sequence(value, "api-keys");
     }
 
@@ -1512,7 +1607,7 @@ pub(crate) fn extract_api_key_value(value: &serde_norway::Value) -> Option<Resul
 pub(crate) fn extract_core_management_secret_key(
     root: &serde_norway::Mapping,
 ) -> Result<Option<String>, String> {
-    let Some(value) = nested_yaml_value(root, &["remote-management", "secret-key"]) else {
+    let Some(value) = core_config_value(root, &["remote-management", "secret-key"]) else {
         return Ok(None);
     };
     let value = value

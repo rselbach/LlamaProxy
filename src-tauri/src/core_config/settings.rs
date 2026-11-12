@@ -478,20 +478,17 @@ pub(crate) fn apply_network_settings(
     document: &mut serde_norway::Value,
     config: &GuiConfigFile,
 ) -> Result<(), String> {
-    let mapping = document
-        .as_mapping_mut()
-        .ok_or_else(|| "The core configuration root must be a YAML mapping".to_string())?;
-
-    let host = config.host.trim();
-    mapping.insert(
-        serde_norway::Value::String("host".to_string()),
-        serde_norway::Value::String(host.to_string()),
-    );
-    mapping.insert(
-        serde_norway::Value::String("port".to_string()),
+    set_core_yaml_top_level_value(
+        document,
+        "host",
+        serde_norway::Value::String(config.host.trim().to_string()),
+    )?;
+    set_core_yaml_top_level_value(
+        document,
+        "port",
         serde_norway::to_value(config.port)
             .map_err(|err| format!("Failed to serialize the core port: {err}"))?,
-    );
+    )?;
     Ok(())
 }
 
@@ -1185,7 +1182,13 @@ pub(crate) fn load_or_create_gui_config() -> Result<GuiConfigFile, String> {
         .zip(file_modified_time(&config_path))
         .is_some_and(|(core, gui)| core > gui);
     if core_is_newer && !gui_parse_failed {
-        if let Ok(core_settings) = read_installed_core_config_settings() {
+        // The GUI always writes a management secret, so a core config without
+        // one holds template defaults (e.g. a v8 template the GUI merged its
+        // legacy keys into), not settings worth importing.
+        if let Some(core_settings) = read_installed_core_config_settings()
+            .ok()
+            .filter(|settings| settings.management_secret_configured)
+        {
             apply_core_settings_to_gui_config(&mut config, &core_settings);
             changed = true;
         }

@@ -1290,3 +1290,96 @@ fn startup_merge_can_shrink_template_api_key_sequence() {
         config.management_secret_key
     );
 }
+
+const V8_CORE_TEMPLATE: &str = "# v8 layout\nconfig-version: 8\nserver:\n    # Server port\n    host: \"\"\n    port: 8317\n    commercial-mode: false\n    tls:\n        enable: false\n        cert: \"\"\n        key: \"\"\nmanagement:\n    allow-remote: false\n    secret-key: \"\"\naccess:\n    api-keys:\n        - \"your-api-key-1\"\n        - \"your-api-key-2\"\nrouting:\n    strategy: round-robin\n    retry:\n        request-retry: 3\n        max-retry-credentials: 0\n        max-retry-interval: 30\n    cooldown:\n        disable-cooling: false\nrequests:\n    proxy-url: \"\"\noauth:\n    auth-dir: \"~/.cli-proxy-api\"\nobservability:\n    logs:\n        debug: false\n        request-log: false\n    usage:\n        usage-statistics-enabled: false\n";
+
+fn v8_gui_config() -> GuiConfigFile {
+    GuiConfigFile {
+        host: "127.0.0.1".to_string(),
+        port: 11432,
+        auth_dir: "oauth".to_string(),
+        management_secret_key: "greendale-human-beings-secret".to_string(),
+        api_keys: vec![GuiApiKeyEntry {
+            key: "troy-barnes-key".to_string(),
+            remark: String::new(),
+        }],
+        usage_statistics_enabled: true,
+        request_retry: 5,
+        streaming_bootstrap_retries: 2,
+        ..GuiConfigFile::default()
+    }
+}
+
+#[test]
+fn v8_core_config_receives_gui_settings_at_v8_paths() {
+    let config = v8_gui_config();
+    let merged = merge_core_config_yaml(V8_CORE_TEMPLATE, None, &config).unwrap();
+    let document = serde_norway::from_str::<serde_norway::Value>(&merged).unwrap();
+
+    assert_eq!(document["server"]["host"], "127.0.0.1");
+    assert_eq!(document["server"]["port"], 11432);
+    assert_eq!(
+        document["management"]["secret-key"],
+        "greendale-human-beings-secret"
+    );
+    assert_eq!(
+        document["access"]["api-keys"],
+        serde_norway::to_value(["troy-barnes-key"]).unwrap()
+    );
+    assert_eq!(document["oauth"]["auth-dir"], "oauth");
+    assert_eq!(
+        document["observability"]["usage"]["usage-statistics-enabled"],
+        true
+    );
+    assert_eq!(document["routing"]["retry"]["request-retry"], 5);
+    assert_eq!(document["streaming"]["bootstrap-retries"], 2);
+    for legacy in ["host", "port", "auth-dir", "remote-management", "api-keys"] {
+        assert!(
+            document.get(legacy).is_none(),
+            "{legacy} written at legacy path"
+        );
+    }
+    assert!(merged.contains("# Server port"));
+
+    let settings = core_config_settings_from_value(&document).unwrap();
+    assert_eq!(settings.port, 11432);
+    assert_eq!(settings.auth_dir, "oauth");
+    assert_eq!(settings.api_keys, vec!["troy-barnes-key"]);
+    assert!(settings.management_secret_configured);
+    assert!(settings.usage_statistics_enabled);
+    assert_eq!(settings.request_retry, 5);
+    assert_eq!(settings.streaming_bootstrap_retries, 2);
+}
+
+#[test]
+fn v8_fields_win_over_stale_legacy_spellings() {
+    let input = "port: 9999\nauth-dir: stale\nserver:\n    port: 8317\noauth:\n    auth-dir: \"~/.cli-proxy-api\"\n";
+    let document = serde_norway::from_str::<serde_norway::Value>(input).unwrap();
+    let settings = core_config_settings_from_value(&document).unwrap();
+    assert_eq!(settings.port, 8317);
+    assert_eq!(settings.auth_dir, "~/.cli-proxy-api");
+
+    let config = v8_gui_config();
+    let updated = patch_core_network_yaml(input, &config).unwrap().unwrap();
+    let document = serde_norway::from_str::<serde_norway::Value>(&updated).unwrap();
+    assert_eq!(document["server"]["port"], 11432);
+    assert_eq!(
+        core_config_settings_from_value(&document).unwrap().port,
+        11432
+    );
+}
+
+#[test]
+fn v8_client_keys_leave_upstream_provider_groups_intact() {
+    let input = "config-version: 8\napi-keys:\n    codex:\n        - base-url: \"https://codex.example.com\"\n          keys:\n              - \"upstream-key\"\n";
+    let updated = patch_core_api_keys_yaml(input, &["troy-barnes-key".to_string()]).unwrap();
+    let document = serde_norway::from_str::<serde_norway::Value>(&updated).unwrap();
+
+    assert_eq!(document["api-keys"]["codex"][0]["keys"][0], "upstream-key");
+    assert_eq!(document["access"]["api-keys"][0], "troy-barnes-key");
+    let root = document.as_mapping().unwrap();
+    assert_eq!(
+        extract_core_api_keys(root).unwrap(),
+        vec!["troy-barnes-key"]
+    );
+}
