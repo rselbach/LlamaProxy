@@ -15,7 +15,7 @@
 //! one, the call is shown to the client as the reply's tool use, and the MCP
 //! request waits until the client's next request brings the result.
 
-use super::http;
+use super::{http, EFFORTS};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -56,7 +56,6 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(30);
 // SIGTERM lets Claude Code release its sign-in refresh lock before it exits.
 const EXIT_GRACE: Duration = Duration::from_secs(5);
 const STDERR_TAIL_BYTES: usize = 8192;
-const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub(super) const SESSION_HEADER: &str = "X-LlamaProxy-Claude-CLI-Session";
 pub(super) const INSTALL_HINT: &str =
     "Claude Code was not found. Install it from https://code.claude.com and run `claude auth login`";

@@ -85,11 +85,12 @@ aliases `opus`, `sonnet`, `haiku`, and `fable`. Claude Code resolves a short
 alias to its latest model, so the aliases stay current between LlamaProxy
 releases.
 
-The core forwards reasoning effort only for model names it recognizes. With
-core 7.2.157, a full ID such as `claude-cli/claude-opus-5-5` receives the
-client's effort, and a short alias such as `claude-cli/opus` receives none.
-The adapter passes a received effort to Claude Code as `--effort`, and
-`max_tokens` as `CLAUDE_CODE_MAX_OUTPUT_TOKENS`.
+Each route lists the levels `claude --effort` accepts (`low`, `medium`,
+`high`, `xhigh`, `max`) under `thinking.levels`. With that list the core
+forwards the client's effort for every model, short aliases included, and
+**Model Aliases** offers the levels for a Claude CLI model. The adapter passes
+a received effort to Claude Code as `--effort`, and `max_tokens` as
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS`.
 
 The **Models** page lists these models under **Claude CLI** with a switch for
 each. A model that is switched off is removed from the core entry and refused

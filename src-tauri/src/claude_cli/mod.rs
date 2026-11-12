@@ -21,7 +21,7 @@ const BRIDGE_PATH: &str = "/llamaproxy-claude-cli";
 const MODEL_PREFIX: &str = "claude-cli/";
 // The IDs `claude --model` accepts. The short aliases resolve to the latest
 // model in Claude Code itself, so they stay current when the full IDs fall
-// behind. The core forwards reasoning effort only for the full IDs it knows.
+// behind.
 const MODELS: [&str; 9] = [
     "claude-opus-5-5",
     "claude-sonnet-5-5",
@@ -33,6 +33,9 @@ const MODELS: [&str; 9] = [
     "haiku",
     "fable",
 ];
+// The levels `claude --effort` accepts. Each route lists them so the core
+// forwards a client's effort and the alias editor offers them.
+const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 // The connection as saved: who Claude Code is signed in as, and which of
 // MODELS the user turned off. It holds no credential.

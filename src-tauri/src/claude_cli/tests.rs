@@ -516,7 +516,8 @@ async fn connecting_requires_a_subscription_sign_in_and_owns_only_its_routes() {
     assert!(entries[2]["models"]
         .as_array()
         .unwrap()
-        .contains(&json!({"name": "opus", "alias": "claude-cli/opus"})));
+        .contains(&json!({"name": "opus", "alias": "claude-cli/opus",
+            "thinking": {"levels": EFFORTS}})));
 
     let (restarted, _listener) = build();
     assert!(restarted.status().account.is_some());
@@ -536,21 +537,21 @@ async fn connecting_requires_a_subscription_sign_in_and_owns_only_its_routes() {
     assert!(build().0.status().account.is_none());
 }
 
-fn create_model_alias(service: &ClaudeCli, model: &str, alias: &str) {
+fn create_model_alias(service: &ClaudeCli, model: &str, alias: &str, effort: &str) {
     let content = fs::read_to_string(&service.config_path).unwrap();
     let available = crate::parse_agent_model_options(&json!({"data": [{"id": model}]})).unwrap();
     let sources = crate::resolved_oauth_alias_sources(
         &content,
         &[],
         &available,
-        crate::AliasSourceCapability::Base,
+        crate::AliasSourceCapability::Reasoning,
     )
     .unwrap();
     let source = sources
         .iter()
         .find(|source| source.source.model == model)
         .unwrap();
-    let updated = crate::add_model_alias_to_yaml(&content, source, alias, "", false).unwrap();
+    let updated = crate::add_model_alias_to_yaml(&content, source, alias, effort, false).unwrap();
     fs::write(&service.config_path, updated).unwrap();
 }
 
@@ -574,8 +575,8 @@ fn custom_model_aliases_survive_a_restart_and_unrelated_model_changes() {
             disabled_models: Vec::new(),
         }))
         .unwrap();
-    create_model_alias(&service, "claude-cli/haiku", "greendale");
-    create_model_alias(&service, "claude-cli/haiku", "study-group");
+    create_model_alias(&service, "claude-cli/haiku", "greendale", "");
+    create_model_alias(&service, "claude-cli/haiku", "study-group", "");
 
     let (restarted, _listener) = build();
     restarted.configure(&restarted.enabled_models()).unwrap();
@@ -594,7 +595,8 @@ fn custom_model_aliases_survive_a_restart_and_unrelated_model_changes() {
             models.iter().filter(|model| model["alias"] == alias).count(),
             1
         );
-        assert!(models.contains(&json!({"name": "haiku", "alias": alias})));
+        assert!(models.contains(&json!({"name": "haiku", "alias": alias,
+            "thinking": {"levels": EFFORTS}})));
     }
 
     let content =
@@ -697,7 +699,7 @@ async fn custom_model_alias_routes_to_claude_cli_through_the_core() {
         fake_claude(&r, &signed_in(), &[reply(text_output("Greendale."))]),
     );
     let (_core, base) = start_core(&r, &service).await;
-    create_model_alias(&service, "claude-cli/haiku", "study-group");
+    create_model_alias(&service, "claude-cli/haiku", "study-group", "high");
     service.configure(&service.enabled_models()).unwrap();
     wait_for_core_model(&r, &base, "study-group").await;
 
@@ -719,8 +721,10 @@ async fn custom_model_alias_routes_to_claude_cli_through_the_core() {
     for pid in process_ids(&r) {
         let arguments = r.read(&format!("args.{pid}"));
         let arguments: Vec<_> = arguments.lines().collect();
-        let at = arguments.iter().position(|arg| *arg == "--model").unwrap();
-        assert_eq!(arguments[at + 1], "haiku");
+        for (flag, want) in [("--model", "haiku"), ("--effort", "high")] {
+            let at = arguments.iter().position(|arg| *arg == flag).unwrap();
+            assert_eq!(arguments[at + 1], want, "{flag}");
+        }
     }
     service.disconnect().unwrap();
 }

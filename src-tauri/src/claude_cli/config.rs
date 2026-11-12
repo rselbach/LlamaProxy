@@ -1,4 +1,4 @@
-use super::{BRIDGE_PATH, MODEL_PREFIX};
+use super::{BRIDGE_PATH, EFFORTS, MODEL_PREFIX};
 use serde_json::json;
 use serde_norway::Value;
 use std::{fs, path::Path};
@@ -87,7 +87,10 @@ pub(super) fn configure(
         // Explicit aliases keep these names apart from native Claude models.
         let models: Vec<_> = models
             .iter()
-            .map(|model| json!({"name": model, "alias": format!("{MODEL_PREFIX}{model}")}))
+            .map(|model| {
+                json!({"name": model, "alias": format!("{MODEL_PREFIX}{model}"),
+                    "thinking": {"levels": EFFORTS}})
+            })
             .chain(custom_models)
             .collect();
         // A subscription limit or a missing sign-in fails the same way on a
